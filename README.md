@@ -68,7 +68,8 @@ src/
   test/          unit tests
 supabase/
   migrations/    versioned, additive schema + RLS + RPCs
-  functions/     Edge Functions (secret key, server-side only)
+  functions/     Edge Functions (@supabase/server, secret key, server-side only)
+  tests/         database test harness (throwaway PostgreSQL 17)
 docs/            setup, inspection, backend, test plan
 ```
 

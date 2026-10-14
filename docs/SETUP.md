@@ -38,7 +38,13 @@ than failing silently.
 
 ## 4. Apply the database migrations
 
-Migrations are additive, idempotent and non-destructive.
+Migrations are additive, idempotent and non-destructive. **They are not applied
+yet** — the hosted project currently has no tables.
+
+### Option A — Supabase CLI (recommended)
+
+Needs a **personal access token** (Dashboard → Account → Access Tokens), which is
+separate from the API keys above.
 
 ```bash
 supabase login
@@ -46,13 +52,21 @@ supabase link --project-ref nvjhyzqbfmnzohlvgdca
 supabase db push          # applies 0001, 0002, 0003
 ```
 
-If you prefer the SQL editor, run the three files in
-`supabase/migrations/` **in order**: `0001_core_schema.sql`,
-`0002_rpc.sql`, `0003_bootstrap_admin.sql`.
+### Option B — SQL editor (no access token)
 
-Before pushing, read `docs/DATABASE_INSPECTION.md`. If the existing database has
-duplicate admission numbers the unique index is skipped with a warning — resolve
-the duplicates and re-run `0001`.
+Paste the three files from `supabase/migrations/` into the dashboard's SQL
+editor **in order** and run them:
+
+1. `0001_core_schema.sql`
+2. `0002_rpc.sql`
+3. `0003_bootstrap_admin.sql`
+
+Both options are safe to re-run: every statement is `if not exists` /
+`create or replace` / `drop policy if exists … create policy`.
+
+Before pushing, read `docs/DATABASE_INSPECTION.md`. If a `students` table is ever
+imported with duplicate admission numbers, the unique index is skipped with a
+warning — resolve the duplicates and re-run `0001`.
 
 ## 5. Create the first administrator
 
@@ -68,6 +82,17 @@ further role changes happen in **Admin → Users**.
 
 ## 6. Deploy the Edge Function (optional)
 
+The function uses `@supabase/server` (`withSupabase`) for JWT verification, client
+creation and CORS. On Edge Functions it is imported directly with no install
+step:
+
+```ts
+import { withSupabase } from 'npm:@supabase/server@1'
+```
+
+It is also a dev dependency (`npm install @supabase/server`) so it type-checks
+and can run locally with `deno serve`.
+
 ```bash
 supabase secrets set SUPABASE_SECRET_KEY=sb_secret_... \
                      KHURUJ_ALLOWED_ORIGIN=https://your-frontend-origin
@@ -76,6 +101,17 @@ supabase functions deploy report-summary
 
 `SUPABASE_URL` and the publishable key are provided automatically to Edge
 Functions; only the secret key and the allowed origin need to be set.
+
+`verify_jwt = true` is correct here because the function uses `auth: 'user'`. If
+you add a function using `auth: 'publishable'`, `'secret'` or `'none'`, set
+`verify_jwt = false` for that function in `supabase/config.toml`, otherwise the
+platform rejects the request before the handler runs.
+
+To run the function locally against the live project:
+
+```bash
+deno serve -A --port 8787 supabase/functions/report-summary/index.ts
+```
 
 ## 7. Configure Auth redirects
 
