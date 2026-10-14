@@ -8,7 +8,7 @@ import { Alert } from '../components/ui'
 import { Logo } from '../components/Logo'
 
 export function LoginPage() {
-  const { ready, session, roles, signIn } = useAuth()
+  const { identityReady, session, roles, signIn } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [email, setEmail] = useState('')
@@ -16,7 +16,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  if (ready && session) {
+  if (identityReady && session) {
     const from = (location.state as { from?: string } | null)?.from
     return <Navigate to={from ?? landingPath(roles)} replace />
   }

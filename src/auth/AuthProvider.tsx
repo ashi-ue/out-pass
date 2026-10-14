@@ -12,6 +12,9 @@ import { AuthContext, type AuthState } from './context'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
+  // Distinguishes "roles loaded (possibly empty)" from "roles not fetched yet",
+  // so a redirect never runs against an empty role list.
+  const [identityLoaded, setIdentityLoaded] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [roles, setRoles] = useState<AppRole[]>([])
@@ -22,6 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(null)
       setRoles([])
       setStudent(null)
+      setIdentityLoaded(true)
       return
     }
 
@@ -38,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ((rolesRes.data as { role: AppRole }[] | null) ?? []).map((r) => r.role),
     )
     setStudent((studentRes.data as Student | null) ?? null)
+    setIdentityLoaded(true)
   }, [])
 
   const refresh = useCallback(async () => {
@@ -66,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
       void (async () => {
         setSession(next)
+        setIdentityLoaded(false)
         await loadIdentity(next)
       })()
     })
@@ -91,6 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthState>(
     () => ({
       ready,
+      identityReady: ready && identityLoaded,
       session,
       profile,
       roles,
@@ -100,7 +107,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signIn,
       signOut,
     }),
-    [ready, session, profile, roles, student, refresh, signIn, signOut],
+    [
+      ready,
+      identityLoaded,
+      session,
+      profile,
+      roles,
+      student,
+      refresh,
+      signIn,
+      signOut,
+    ],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

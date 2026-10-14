@@ -19,10 +19,10 @@ export function ProtectedRoute({
   roles?: AppRole[]
   children: ReactNode
 }) {
-  const { ready, session, roles } = useAuth()
+  const { identityReady, session, roles } = useAuth()
   const location = useLocation()
 
-  if (!ready) return <CenteredSpinner label="Checking your session…" />
+  if (!identityReady) return <CenteredSpinner label="Checking your session…" />
 
   if (!session) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
