@@ -58,8 +58,11 @@ insert into auth.users (id, email, raw_user_meta_data) values
   ('77777777-7777-7777-7777-777777777777', 'admin@uni.edu',      '{"full_name":"Administrator"}'),
   ('88888888-8888-8888-8888-888888888888', 'student2@uni.edu',   '{"full_name":"Student Two"}');
 
--- The auth trigger already inserted a student role for everyone; add the rest.
+-- Since migration 0004 the auth trigger grants NO role, so every role is
+-- granted explicitly here.
 insert into public.user_roles (user_id, role) values
+  ('11111111-1111-1111-1111-111111111111', 'student'),
+  ('88888888-8888-8888-8888-888888888888', 'student'),
   ('22222222-2222-2222-2222-222222222222', 'mentor'),
   ('33333333-3333-3333-3333-333333333333', 'class_teacher'),
   ('44444444-4444-4444-4444-444444444444', 'medical_approver'),
@@ -425,6 +428,95 @@ begin
   perform public.test_record('Audit log records Gate-Out', '>=2', v_gate_out::text, v_gate_out >= 2);
   perform public.test_record('Audit log records Gate-In', '>=1', v_gate_in::text, v_gate_in >= 1);
 end $$;
+
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 8. Username logins and forced password change (migration 0004)
+-- ---------------------------------------------------------------------------
+
+-- A new auth user gets a profile but NO role.
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('99999999-9999-9999-9999-999999999999', 'newteacher@khuruj.local',
+   '{"full_name":"New Teacher","username":"newteacher"}');
+
+do $$
+declare v_roles int; v_username text;
+begin
+  select count(*) into v_roles from public.user_roles
+   where user_id = '99999999-9999-9999-9999-999999999999';
+  select username into v_username from public.profiles
+   where id = '99999999-9999-9999-9999-999999999999';
+  perform public.test_record('New auth user receives no role', '0',
+    v_roles::text, v_roles = 0);
+  perform public.test_record('Username captured from user metadata', 'newteacher',
+    coalesce(v_username, 'null'), v_username = 'newteacher');
+end $$;
+
+-- Username format is enforced.
+select public.test_expect_error(
+  'Invalid username rejected', 'profiles_username_format_chk',
+  $$update public.profiles set username = 'Bad User!'
+     where id = '99999999-9999-9999-9999-999999999999'$$);
+
+-- Usernames are unique, case-insensitively. `newteacher` already belongs to
+-- user 9999; the index is on lower(username), so any casing collides.
+select public.test_expect_error(
+  'Duplicate username rejected', 'profiles_username_key',
+  $$update public.profiles set username = 'newteacher'
+     where id = '77777777-7777-7777-7777-777777777777'$$);
+
+-- A non-admin cannot change a username, even their own.
+select public.test_set_user('22222222-2222-2222-2222-222222222222');
+select public.test_expect_error(
+  'Teacher cannot change their own username', 'USERNAME_IMMUTABLE',
+  $$update public.profiles set username = 'mentor2'
+     where id = '22222222-2222-2222-2222-222222222222'$$);
+
+-- An admin can change any username.
+select public.test_set_user('77777777-7777-7777-7777-777777777777');
+do $$
+begin
+  update public.profiles set username = 'newteacher2'
+   where id = '99999999-9999-9999-9999-999999999999';
+  perform public.test_record('Admin can change a username', 'newteacher2',
+    (select username from public.profiles
+      where id = '99999999-9999-9999-9999-999999999999'), true);
+exception when others then
+  perform public.test_record('Admin can change a username', 'newteacher2',
+    sqlerrm, false);
+end $$;
+
+-- The user clears their own forced-change flag; no one can clear another's.
+update public.profiles set must_change_password = true
+ where id = '22222222-2222-2222-2222-222222222222';
+
+select public.test_set_user('22222222-2222-2222-2222-222222222222');
+do $$
+begin
+  perform public.complete_password_change();
+  perform public.test_record('User clears own forced-change flag', 'false',
+    (select must_change_password::text from public.profiles
+      where id = '22222222-2222-2222-2222-222222222222'), true);
+end $$;
+
+select public.test_set_user('77777777-7777-7777-7777-777777777777');
+update public.profiles set must_change_password = true
+ where id = '88888888-8888-8888-8888-888888888888';
+select public.test_set_user('22222222-2222-2222-2222-222222222222');
+do $$
+begin
+  perform public.complete_password_change();
+  perform public.test_record('Clearing does not affect other users', 'true',
+    (select must_change_password::text from public.profiles
+      where id = '88888888-8888-8888-8888-888888888888'), true);
+end $$;
+
+-- complete_password_change() requires a session.
+select public.test_set_user(null);
+select public.test_expect_error(
+  'Password-change helper requires a session', 'AUTH_REQUIRED',
+  $$select public.complete_password_change()$$);
 
 reset role;
 

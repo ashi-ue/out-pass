@@ -34,6 +34,21 @@ const ERROR_MESSAGES: Record<string, string> = {
   LAST_ADMIN: 'You cannot remove the last administrator.',
   ADMIN_ALREADY_EXISTS: 'An administrator already exists.',
   INVALID_APPROVER_ROLE: 'That role cannot be an approver.',
+  USERNAME_TAKEN: 'That username is already taken.',
+  INVALID_USERNAME:
+    'Usernames are 3–32 characters: lowercase letters, digits, dot, dash or underscore.',
+  USERNAME_IMMUTABLE: 'Only an administrator can change a username.',
+  INVALID_ROLE: 'That role cannot be assigned.',
+  WEAK_PASSWORD:
+    'Use at least 8 characters, including a letter and a digit.',
+  CREATE_FAILED: 'That account could not be created. It may already exist.',
+  PASSWORD_RESET_FAILED: 'The password could not be reset. Please try again.',
+  USERNAME_UPDATE_FAILED: 'The username could not be updated.',
+  PROFILE_UPDATE_FAILED: 'The account profile could not be saved.',
+  ROLE_GRANT_FAILED: 'The account was created but its role could not be set.',
+  ROLE_LOOKUP_FAILED: 'Your permissions could not be verified. Please try again.',
+  ACCOUNT_DISABLED: 'This account has been deactivated. Contact an administrator.',
+  UNKNOWN_ACTION: 'That action is not supported.',
   UNKNOWN: 'Something went wrong. Please try again.',
 }
 

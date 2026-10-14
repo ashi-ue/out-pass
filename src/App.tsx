@@ -5,6 +5,8 @@ import { landingPath } from './auth/roles'
 import { CenteredSpinner } from './components/ui'
 import { Layout } from './components/Layout'
 import { LoginPage } from './pages/LoginPage'
+import { ChangePasswordPage } from './pages/ChangePasswordPage'
+import { AccountDisabledPage } from './pages/AccountDisabledPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { AdminDashboard } from './pages/admin/AdminDashboard'
 import { AdminStudents } from './pages/admin/AdminStudents'
@@ -33,6 +35,22 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/change-password"
+        element={
+          <ProtectedRoute>
+            <ChangePasswordPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/account-disabled"
+        element={
+          <ProtectedRoute>
+            <AccountDisabledPage />
+          </ProtectedRoute>
+        }
+      />
       <Route path="/" element={<HomeRedirect />} />
 
       {/* Authenticated shell */}

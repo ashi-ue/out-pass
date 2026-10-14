@@ -19,13 +19,24 @@ export function ProtectedRoute({
   roles?: AppRole[]
   children: ReactNode
 }) {
-  const { identityReady, session, roles } = useAuth()
+  const { identityReady, session, roles, mustChangePassword, isDeactivated } =
+    useAuth()
   const location = useLocation()
 
   if (!identityReady) return <CenteredSpinner label="Checking your session…" />
 
   if (!session) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  }
+
+  // An administrator has deactivated the account. Signing out is the only way
+  // forward; the database refuses the account's actions in any case.
+  if (isDeactivated) return <Navigate to="/account-disabled" replace />
+
+  // A temporary password must be replaced before anything else is reachable.
+  // This runs before the role check so it cannot be skipped by a deep link.
+  if (mustChangePassword && location.pathname !== '/change-password') {
+    return <Navigate to="/change-password" replace />
   }
 
   if (allowed && allowed.length > 0) {

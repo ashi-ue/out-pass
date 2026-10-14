@@ -7,6 +7,7 @@ import {
 } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { loginEmail } from '../lib/login'
 import type { AppRole, Profile, Student } from '../lib/types'
 import { AuthContext, type AuthState } from './context'
 
@@ -82,10 +83,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [loadIdentity])
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+  const signIn = useCallback(async (username: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: loginEmail(username),
+      password,
+    })
     if (error) throw error
   }, [])
+
+  const changePassword = useCallback(
+    async (newPassword: string) => {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      })
+      if (error) throw error
+      // Clear the server-side flag. A failure here is not fatal: the password
+      // has already changed and the flag only drives a prompt.
+      await supabase.rpc('complete_password_change')
+      await refresh()
+    },
+    [refresh],
+  )
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut()
@@ -103,8 +121,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       roles,
       student,
       needsStudentLink: Boolean(session) && roles.includes('student') && !student,
+      mustChangePassword: Boolean(profile?.must_change_password),
+      isDeactivated: Boolean(session) && profile?.is_active === false,
       refresh,
       signIn,
+      changePassword,
       signOut,
     }),
     [
@@ -116,6 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       student,
       refresh,
       signIn,
+      changePassword,
       signOut,
     ],
   )

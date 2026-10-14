@@ -44,8 +44,14 @@ for f in "$ROOT"/supabase/migrations/*.sql; do
 done
 
 echo "==> running security tests"
-$DOCKER exec -i "$CONTAINER" psql -U postgres -v ON_ERROR_STOP=0 < "$HERE/10_security_tests.sql"
-status=$?
+# The suite raises at the end when any check fails, but psql reports that as a
+# plain error line rather than a non-zero exit, so match the sentinel too.
+output="$($DOCKER exec -i "$CONTAINER" psql -U postgres -v ON_ERROR_STOP=0 < "$HERE/10_security_tests.sql" 2>&1)"
+printf '%s\n' "$output"
+status=0
+if printf '%s' "$output" | grep -q 'KHURUJ TESTS FAILED'; then
+  status=1
+fi
 
 if [ $status -eq 0 ]; then
   echo "==> ALL DATABASE TESTS PASSED"

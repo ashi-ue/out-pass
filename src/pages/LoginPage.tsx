@@ -11,7 +11,7 @@ export function LoginPage() {
   const { identityReady, session, roles, signIn } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -26,7 +26,7 @@ export function LoginPage() {
     setError(null)
     setBusy(true)
     try {
-      await signIn(email.trim(), password)
+      await signIn(username, password)
       navigate('/')
     } catch (err) {
       setError(friendlyError(err))
@@ -68,7 +68,7 @@ export function LoginPage() {
           </div>
           <h2 className="text-2xl font-bold text-navy-900">Sign in</h2>
           <p className="mt-1 mb-6 text-sm text-mist-500">
-            Use your university account.
+            Use the username your administrator gave you.
           </p>
 
           {!isSupabaseConfigured ? (
@@ -87,17 +87,20 @@ export function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="label" htmlFor="email">
-                Email
+              <label className="label" htmlFor="username">
+                Username
               </label>
               <input
-                id="email"
-                type="email"
-                autoComplete="email"
+                id="username"
+                type="text"
+                autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 required
                 className="input"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 disabled={!isSupabaseConfigured}
               />
             </div>
@@ -126,8 +129,8 @@ export function LoginPage() {
           </form>
 
           <p className="mt-6 text-xs text-mist-500">
-            Accounts are provisioned by the administrator. New sign-ups receive
-            the student role until an administrator assigns another.
+            Accounts are created by an administrator. There is no self sign-up;
+            contact your administrator if you cannot sign in.
           </p>
         </div>
       </div>
