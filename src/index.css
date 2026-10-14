@@ -1,0 +1,121 @@
+/* ==========================================================================
+   Khuruj brand identity — deep navy, teal blue, white, light grey.
+   Exposed to Tailwind v4 through @theme so utilities like `bg-navy-700`
+   are generated automatically.
+   ========================================================================== */
+@import 'tailwindcss';
+
+@theme {
+  /* Deep navy — primary surface / brand */
+  --color-navy-50: #eef2f8;
+  --color-navy-100: #d5deeb;
+  --color-navy-200: #a9bcd6;
+  --color-navy-300: #7c99c0;
+  --color-navy-400: #4f76aa;
+  --color-navy-500: #2f5588;
+  --color-navy-600: #1e3f6b;
+  --color-navy-700: #12294d;
+  --color-navy-800: #0b1f3a;
+  --color-navy-900: #071427;
+
+  /* Teal blue — accent / actions */
+  --color-teal-50: #e6f7f9;
+  --color-teal-100: #c1ecf1;
+  --color-teal-200: #8dd9e3;
+  --color-teal-300: #59c6d5;
+  --color-teal-400: #2bb0c4;
+  --color-teal-500: #1095ab;
+  --color-teal-600: #0b7a8c;
+  --color-teal-700: #085e6d;
+  --color-teal-800: #06434e;
+  --color-teal-900: #042a31;
+
+  /* Neutral grey — surfaces and dividers */
+  --color-mist-50: #f7f9fb;
+  --color-mist-100: #eef1f5;
+  --color-mist-200: #e0e5ec;
+  --color-mist-300: #cbd2dc;
+  --color-mist-400: #9aa4b2;
+  --color-mist-500: #6b7686;
+  --color-mist-600: #4b5462;
+  --color-mist-700: #333b46;
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+    Roboto, 'Helvetica Neue', Arial, 'Noto Sans Arabic', sans-serif;
+
+  --radius-card: 0.875rem;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-mist-50 text-navy-900 font-sans antialiased;
+    margin: 0;
+    min-height: 100vh;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-teal-500;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-[var(--radius-card)] border border-mist-200 bg-white shadow-sm;
+  }
+
+  /* Tailwind v4 cannot @apply one custom class from another, so each button
+     variant repeats the shared base utilities. */
+  .btn,
+  .btn-primary,
+  .btn-navy,
+  .btn-ghost,
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5
+      text-sm font-semibold transition-colors disabled:cursor-not-allowed
+      disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply bg-teal-600 text-white hover:bg-teal-700;
+  }
+
+  .btn-navy {
+    @apply bg-navy-800 text-white hover:bg-navy-700;
+  }
+
+  .btn-ghost {
+    @apply border border-mist-300 bg-white text-navy-800 hover:bg-mist-100;
+  }
+
+  .btn-danger {
+    @apply bg-red-600 text-white hover:bg-red-700;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-mist-300 bg-white px-3 py-2.5 text-sm
+      text-navy-900 placeholder:text-mist-400 focus:border-teal-500
+      focus:ring-2 focus:ring-teal-500/30 focus:outline-none;
+  }
+
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-navy-800;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs
+      font-semibold;
+  }
+
+  .th {
+    @apply px-4 py-3 text-left text-xs font-semibold tracking-wide
+      text-mist-500 uppercase;
+  }
+
+  .td {
+    @apply px-4 py-3 text-sm text-navy-900;
+  }
+}

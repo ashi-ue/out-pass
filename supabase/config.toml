@@ -1,0 +1,30 @@
+# Khuruj (خروج) — Supabase project configuration
+# Docs: https://supabase.com/docs/guides/local-development/cli/config
+#
+# `project_id` is only used by the local CLI stack. Remote commands
+# (`db push`, `functions deploy`) use the linked project ref.
+
+project_id = "khuruj"
+
+[api]
+enabled = true
+# Keep public sign-ups available so students can self-register; every new
+# account receives the `student` role until an administrator changes it.
+enable_signup = true
+
+[auth]
+enabled = true
+# Site URL and redirect allow-list must include the deployed frontend origin.
+site_url = "http://localhost:12000"
+additional_redirect_urls = ["http://localhost:12000", "http://localhost:5173"]
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+
+[functions.report-summary]
+verify_jwt = true
+
+[db]
+port = 54322
+major_version = 17

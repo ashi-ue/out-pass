@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+
+# Local env files — NEVER commit real keys
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Supabase local state
+supabase/.temp/
+supabase/.branches/
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.local
+
+# Logs
+*.log
+npm-debug.log*
