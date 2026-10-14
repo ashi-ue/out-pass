@@ -89,6 +89,12 @@ failure. It never touches the hosted project.
   empty role list and sends everyone to `/student`. Gate redirects on
   `identityReady` (session **and** roles loaded). `src/test/routing.test.tsx`
   covers this; it fails if you revert to `ready`.
+- **Seed the cache from mutation results.** A decision mutation that only calls
+  `invalidateQueries` leaves the badge on the old value until a refetch lands;
+  if the page remounts first, the update is lost and the UI disagrees with the
+  database. Call `setQueryData` with the RPC's returned row, then invalidate.
+  `src/test/passDetailDecision.test.tsx` freezes reads after the click so the
+  badge can only come from the mutation result.
 
 ## Local demo data and browser testing
 

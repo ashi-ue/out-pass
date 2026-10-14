@@ -4,6 +4,8 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_URL: string
   readonly VITE_SUPABASE_PUBLISHABLE_KEY: string
   readonly VITE_CAMPUS_TZ?: string
+  /** Same-origin path proxied to the stack by the dev server; see vite.config.ts. */
+  readonly VITE_SUPABASE_PROXY_PATH?: string
 }
 
 interface ImportMeta {
