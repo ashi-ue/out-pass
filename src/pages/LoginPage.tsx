@@ -39,7 +39,7 @@ export function LoginPage() {
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* Brand panel */}
       <div className="relative hidden flex-col justify-between bg-navy-800 p-10 lg:flex">
-        <Logo variant="light" size={48} />
+        <Logo variant="light" size={56} />
         <div>
           <h1 className="text-4xl font-bold text-white">
             Campus out-pass, without the paperwork.
