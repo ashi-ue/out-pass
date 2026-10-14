@@ -9,11 +9,49 @@ verified, so nothing is claimed that has not been tested.
 | --- | --- | --- |
 | `VITE_SUPABASE_URL` | `src/lib/supabase.ts` | Yes (public) |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | `src/lib/supabase.ts` | Yes (public, RLS-guarded) |
-| `SUPABASE_SECRET_KEY` | Edge Function only (`Deno.env`) | **Never** |
+| `SUPABASE_SECRET_KEY` | Edge Function only (runtime env) | **Never** |
 
 The frontend never imports the secret key. `src/lib/supabase.ts` reads only
 `VITE_`-prefixed variables. The secret key is set with
 `supabase secrets set`, which stores it server-side.
+
+`.env.local` holds the real values and is gitignored (`*.local`). `.env.example`
+is the committed template and contains placeholders only. A repo-wide scan
+confirms no real key value appears in any tracked file.
+
+### Edge Function auth with `@supabase/server`
+
+`supabase/functions/report-summary/index.ts` uses `withSupabase` from
+`@supabase/server`, which replaces the hand-rolled JWT verification that was
+previously in this function:
+
+```ts
+export default {
+  fetch: withSupabase({ auth: 'user' }, async (req, ctx) => { … }),
+}
+```
+
+`auth: 'user'` verifies the caller's JWT (against the project's JWKS) *before*
+the handler runs, so the handler is never reached without a valid identity. The
+context provides `ctx.supabase` (RLS-scoped) and `ctx.supabaseAdmin` (bypasses
+RLS). The package also handles CORS.
+
+Crucially, the caller's role is still read **from the database** through the
+RLS-scoped client, not from JWT claims or the request body:
+
+```ts
+const { data: roles } = await ctx.supabase
+  .from('user_roles').select('role').eq('user_id', ctx.userClaims?.id)
+```
+
+The `user_roles_select_self_or_admin` policy lets a user read their own roles, so
+a non-admin simply sees no `admin` row and is rejected with `403`. The admin
+client is only used after that check.
+
+`verify_jwt = true` remains set for this function in `supabase/config.toml`,
+which is correct for `auth: 'user'` — the platform-level JWT check and the
+package's own verification agree. (For `auth: 'publishable'`, `'secret'` or
+`'none'`, `verify_jwt` must be set to `false`.)
 
 ## 2. Why RPCs instead of direct table writes
 
@@ -63,7 +101,9 @@ An approver who tries to decide a type outside their scope gets `FORBIDDEN` from
 the database, regardless of what the UI shows. Nobody can decide their own
 request (`SELF_APPROVAL_FORBIDDEN`).
 
-## 5. What was verified locally
+## 5. What was verified
+
+### Local (no credentials needed)
 
 Run with Node 24 / npm 11.
 
@@ -74,6 +114,28 @@ Run with Node 24 / npm 11.
 | Production build | `npm run build` | Succeeds |
 | Frontend unit tests | `npm run test:run` | 19 tests pass across 3 files |
 | Database tests | `supabase/tests/run.sh` | **43/43 pass** on PostgreSQL 17 |
+| Edge Function type-check | `deno check supabase/functions/report-summary/index.ts` | Passes, 0 errors |
+
+### Against the live project (with the supplied keys)
+
+| Check | Method | Result |
+| --- | --- | --- |
+| JWKS reachable | `GET /auth/v1/.well-known/jwks.json` | **200**, ES256 key returned |
+| Publishable key valid | `POST /auth/v1/token` | **400** `invalid_credentials` (key accepted, Auth reachable) |
+| Secret key valid | `GET /auth/v1/admin/users` | **200** |
+| Frontend boots configured | login page in the browser | No "Supabase is not configured" warning |
+| Live schema | OpenAPI + table probes | **Empty** — see `DATABASE_INSPECTION.md` |
+| Edge Function, no credentials | `POST` to local `deno serve` | **401** — handler not reached |
+| Edge Function, malformed JWT | `POST` with `Authorization: Bearer not.a.jwt` | **401** |
+| Edge Function, **real JWT** | temp user created, signed in, token sent | Handler **ran** (returned `ROLE_LOOKUP_FAILED`, because `user_roles` does not exist yet) |
+
+That last row is the important one: it proves the JWT is verified against the
+live project's JWKS and the handler executes for a real signed-in user. The
+`500 ROLE_LOOKUP_FAILED` is the correct, expected response on a database with no
+schema — it is the role check failing to find its table, not an auth failure.
+Once the migrations are applied it becomes `403 FORBIDDEN` for a non-admin.
+
+The temporary user was deleted afterwards; the project is back to 0 users.
 
 ### Database tests
 
@@ -107,17 +169,18 @@ barcodes, role management and the last-admin guard, and audit-log capture.
    RPC and by a trigger. Consolidated into a single trigger so exactly one audit
    row is written per movement.
 
-### Not yet verified (needs live credentials)
+### Not yet verified
 
-The database logic, RLS and RPCs are verified against a real PostgreSQL 17
-instance. What remains needs the hosted Supabase project's keys and could **not**
-be executed here:
-
-1. Applying the migrations to the hosted project (`supabase db push`) and
-   confirming they coexist with the existing Shuhood schema.
-2. Inspecting the live `students` table to confirm the barcode column name.
-3. Supabase Auth sign-in flow and JWT claims against the real project.
-4. The browser camera path for barcode scanning (needs a camera and HTTPS).
-5. The Edge Function deployed with a real secret key.
+1. **The migrations are not applied to the hosted project.** Applying them needs
+   a Supabase personal access token for `supabase db push` (or pasting the SQL
+   into the dashboard's SQL editor). The keys supplied do not include one. Until
+   this is done, the app has no schema and no screen can load real data.
+2. **The live `students` table is empty**, so no barcode resolves yet. See
+   `DATABASE_INSPECTION.md` section 6.
+3. **The browser camera path** for barcode scanning needs a camera and HTTPS. The
+   manual admission-number fallback is what can be exercised locally.
+4. **The Edge Function is not deployed.** It runs and authenticates correctly
+   locally against the live JWKS, but `supabase functions deploy` also needs the
+   access token.
 
 The manual test plan in `docs/TEST_PLAN.md` covers these.

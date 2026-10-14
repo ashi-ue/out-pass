@@ -65,4 +65,17 @@ failure. It never touches the hosted project.
   tables they serve. `app.audit_config_change` reads keys via `to_jsonb(new)`
   because `approval_rules` has `request_type` and `app_settings` has `key`.
 - Supabase secrets: only `VITE_`-prefixed vars reach the browser. The secret key
-  is used exclusively by the Edge Function.
+  is used exclusively by the Edge Function. `.env.local` is gitignored; never
+  commit real keys.
+- **The hosted project (`nvjhyzqbfmnzohlvgdca`) is empty** — no tables, no auth
+  users, no buckets, Postgres 14.18. There is no Shuhood schema here to reuse.
+  Re-verify with `GET /rest/v1/` (OpenAPI `definitions`) before assuming
+  otherwise. See `docs/DATABASE_INSPECTION.md`.
+- Edge Functions use `@supabase/server`: `withSupabase({ auth: 'user' }, …)`.
+  The handler only runs after the JWT is verified against the project's JWKS.
+  Keep reading roles from the **database** via `ctx.supabase`, not from
+  `ctx.userClaims`. `verify_jwt = true` is right for `auth: 'user'`; any
+  `'publishable'`/`'secret'`/`'none'` function needs `verify_jwt = false`.
+- Applying migrations to the hosted project needs a **personal access token**
+  (for `supabase db push`). The API keys alone are not enough; the dashboard SQL
+  editor is the no-token path.
