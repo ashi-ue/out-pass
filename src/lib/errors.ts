@@ -76,7 +76,7 @@ export function friendlyError(error: unknown): string {
 
   // Surface auth-ish errors verbatim; they are already user-facing.
   if (/invalid login credentials/i.test(message)) {
-    return 'Incorrect email or password.'
+    return 'Incorrect username or password.'
   }
   if (/email not confirmed/i.test(message)) {
     return 'Please confirm your email address before signing in.'
