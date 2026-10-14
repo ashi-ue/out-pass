@@ -95,6 +95,14 @@ failure. It never touches the hosted project.
   database. Call `setQueryData` with the RPC's returned row, then invalidate.
   `src/test/passDetailDecision.test.tsx` freezes reads after the click so the
   badge can only come from the mutation result.
+- **The Vercel deploy needs `VITE_`-prefixed vars, and a redeploy to apply
+  them.** Vite inlines `import.meta.env` at build time and exposes only `VITE_`
+  names to the browser. The `khuruj` Vercel project also has plain
+  `SUPABASE_*`/`NEXT_PUBLIC_*` vars, which client code cannot see — so a build
+  without `VITE_SUPABASE_URL` bakes in "Supabase is not configured" and the
+  login form stays disabled. Setting a variable does not rebuild; trigger a
+  production redeploy. `docs/SETUP.md` §10 has the exact vars and a `curl` check
+  against the deployed bundle.
 
 ## Local demo data and browser testing
 
