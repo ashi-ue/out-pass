@@ -18,8 +18,8 @@ import { PassDetailPage } from './pages/PassDetailPage'
 import { GatePortal } from './pages/gate/GatePortal'
 
 function HomeRedirect() {
-  const { ready, session, roles } = useAuth()
-  if (!ready) return <CenteredSpinner />
+  const { identityReady, session, roles } = useAuth()
+  if (!identityReady) return <CenteredSpinner />
   if (!session) return <Navigate to="/login" replace />
   return <Navigate to={landingPath(roles)} replace />
 }

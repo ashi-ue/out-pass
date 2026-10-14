@@ -73,3 +73,18 @@ is considered working. Each maps to a rule in the brief.
 | F1 | Non-admin calls `admin_set_user_role` | `FORBIDDEN`. |
 | F2 | Admin revokes the last admin role | `LAST_ADMIN`. |
 | F3 | Admin grants and revokes a role | Succeeds; `role_granted` / `role_revoked` appear in the audit log. |
+
+## Automated coverage
+
+Three suites back this plan. All of them must pass before a change ships.
+
+| Suite | Command | Covers | Last result |
+| --- | --- | --- | --- |
+| Database | `./supabase/tests/run.sh` | Real RPCs and RLS: role scoping, expired passes, duplicate Gate-Out, Gate-In after expiry, audit rows (rules 1–10, E1–E8, F1–F3) | 43 / 43 |
+| Frontend unit | `npm run test:run` | Role helpers, pass-validity maths, error messages, route guards | 25 / 25 |
+| Browser workflow | Playwright (see below) | Sign-in per role, submit → approve → Gate-Out → Gate-In, expired pass, unknown barcode | 17 / 17 |
+
+The browser workflow drives the real UI against a local stack: sign in as each
+role, submit an afternoon outing as a student, approve it as the owning mentor,
+look the student up at the gate by barcode, record Gate-Out, confirm the
+already-outside warning, then record Gate-In and check the admin audit log.

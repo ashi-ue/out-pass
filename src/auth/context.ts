@@ -3,7 +3,10 @@ import type { Session } from '@supabase/supabase-js'
 import type { AppRole, Profile, Student } from '../lib/types'
 
 export interface AuthState {
+  /** The session has been resolved. Roles may still be loading — see identityReady. */
   ready: boolean
+  /** The session AND the caller's roles/student record have both loaded. */
+  identityReady: boolean
   session: Session | null
   profile: Profile | null
   roles: AppRole[]

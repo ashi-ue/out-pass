@@ -148,14 +148,44 @@ checks over the real RPCs and RLS policies.
 
 It exits non-zero if any check fails. Run this after changing any migration.
 
+## 9c. Local demo data (optional)
+
+To try the whole workflow without touching real student records, run the seed
+against a **local** Supabase stack. It creates one account per role and three
+students whose admission numbers are the barcode values on their ID cards.
+
+```bash
+supabase start
+supabase db reset          # applies migrations, then supabase/seed.sql
+```
+
+Every demo account uses the password `Khuruj#2026`:
+
+| Email | Role |
+| --- | --- |
+| `admin@khuruj.test` | admin |
+| `mentor@khuruj.test` | mentor (afternoon outings) |
+| `teacher@khuruj.test` | class teacher (going home) |
+| `medical@khuruj.test` | medical approver |
+| `duty@khuruj.test` | duty teacher (Thursday/Friday) |
+| `gate@khuruj.test` | gate security |
+| `student@khuruj.test` | student — `2023CS1042` |
+| `student2@khuruj.test` | student — `2023EC2087` |
+| `student3@khuruj.test` | student — `2022ME3311` |
+
+`supabase/seed.sql` is demo data for a local stack only. Never run it against a
+hosted project that holds real records. The seed is re-runnable: it reuses any
+account that already exists and never deletes data.
+
 ## 10. Remaining configuration tasks
 
-- [ ] Provide the publishable and secret keys (not present in the build
-      environment used to create this project).
+- [x] Provide the publishable and secret keys (configured in `.env.local`,
+      which is git-ignored; the secret key is backend-only).
 - [ ] Inspect the live schema and confirm the barcode column name
       (`docs/DATABASE_INSPECTION.md`).
 - [ ] Resolve duplicate admission numbers, if any.
 - [ ] Run the manual test plan (`docs/TEST_PLAN.md`).
-- [ ] Seed administrators and link student accounts.
+- [ ] Seed administrators and link real student accounts on the hosted project.
+      Demo accounts already exist for the local stack (`9c` above).
 - [ ] Set the production origin in Auth redirects and in
       `KHURUJ_ALLOWED_ORIGIN`.

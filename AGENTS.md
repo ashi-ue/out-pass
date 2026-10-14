@@ -79,3 +79,26 @@ failure. It never touches the hosted project.
 - Applying migrations to the hosted project needs a **personal access token**
   (for `supabase db push`). The API keys alone are not enough; the dashboard SQL
   editor is the no-token path.
+- **Vite env precedence beats `.env.local`.** A `VITE_SUPABASE_URL` exported in
+  the shell overrides the file, so the dev server silently serves the hosted URL
+  and every login fails with `invalid_credentials` against the wrong project.
+  `unset` those vars (or restart the shell) before `npm run dev` when switching
+  between the local stack and the hosted project.
+- **Never redirect on `ready` alone.** `ready` is true as soon as the session is
+  known, but roles load in a separate query. Redirecting then runs against an
+  empty role list and sends everyone to `/student`. Gate redirects on
+  `identityReady` (session **and** roles loaded). `src/test/routing.test.tsx`
+  covers this; it fails if you revert to `ready`.
+
+## Local demo data and browser testing
+
+- `supabase/seed.sql` creates one account per role and three students with
+  barcode admission numbers. Password for every account: `Khuruj#2026`. Apply
+  with `supabase db reset`. Local only — never run it against the hosted project.
+- To exercise the UI for real, drive Chromium with Playwright
+  (`/usr/bin/chromium`, args `--no-sandbox`). Synthetic typing does reach the
+  React controlled login inputs; no session injection is needed.
+- The default `GITHUB_TOKEN` in this environment is a **read-only** GitHub App
+  installation token: it can read the repo but pushing or opening PRs returns
+  `403 Resource not accessible by integration`. Use the PAT supplied by the user
+  for writes, and re-point `origin` back to the credential-free URL afterwards.
