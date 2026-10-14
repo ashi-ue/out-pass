@@ -49,17 +49,19 @@ separate from the API keys above.
 ```bash
 supabase login
 supabase link --project-ref nvjhyzqbfmnzohlvgdca
-supabase db push          # applies 0001, 0002, 0003
+supabase db push          # applies 0001 .. 0005
 ```
 
 ### Option B ‚Äî SQL editor (no access token)
 
-Paste the three files from `supabase/migrations/` into the dashboard's SQL
-editor **in order** and run them:
+Paste the files from `supabase/migrations/` into the dashboard's SQL editor
+**in order** and run them:
 
 1. `0001_core_schema.sql`
 2. `0002_rpc.sql`
 3. `0003_bootstrap_admin.sql`
+4. `0004_username_login.sql`
+5. `0005_bootstrap_admin_username.sql`
 
 Both options are safe to re-run: every statement is `if not exists` /
 `create or replace` / `drop policy if exists ‚Ä¶ create policy`.
@@ -70,15 +72,35 @@ warning ‚Äî resolve the duplicates and re-run `0001`.
 
 ## 5. Create the first administrator
 
-1. Create a user in **Authentication ‚Üí Users** (or let them sign up).
-2. Promote them once, from the SQL editor (runs as `service_role`):
+Staff sign in with a **username**, not an email: the account address is derived
+as `<username>@khuruj.local`. Create the first administrator once, from the SQL
+editor (runs as `service_role`):
 
 ```sql
-select public.bootstrap_admin('admin@university.edu');
+select public.bootstrap_admin('ayesha.khan');
 ```
 
-The function refuses to run if an administrator already exists. After this, all
-further role changes happen in **Admin ‚Üí Users**.
+The function accepts either a username or an email (it maps one to the other) and
+refuses to run if an administrator already exists. After this, all further staff
+and student accounts are created from the app itself, in **Admin -> Teachers**,
+and every subsequent role change happens in **Admin -> Users**.
+
+### The `admin-users` Edge Function
+
+The admin page never creates accounts from the browser. It calls the
+`admin-users` Edge Function, which holds the secret key server-side and:
+
+- verifies the caller's JWT and reads their roles from the **database** (not the
+  token), so only a real administrator can provision accounts;
+- creates the auth user with the service role, sets `must_change_password`, and
+  grants the chosen role;
+- refuses duplicate usernames (`USERNAME_TAKEN`), weak passwords
+  (`WEAK_PASSWORD`), unknown roles (`INVALID_ROLE`) and any non-admin caller
+  (`FORBIDDEN`);
+- will not deactivate the last active administrator (`LAST_ADMIN`).
+
+New staff receive a **temporary password** and must change it on first sign-in.
+Until they do, every route except `/change-password` redirects them there.
 
 ## 6. Deploy the Edge Function (optional)
 
@@ -96,7 +118,7 @@ and can run locally with `deno serve`.
 ```bash
 supabase secrets set SUPABASE_SECRET_KEY=sb_secret_... \
                      KHURUJ_ALLOWED_ORIGIN=https://your-frontend-origin
-supabase functions deploy report-summary
+supabase functions deploy admin-users report-summary
 ```
 
 `SUPABASE_URL` and the publishable key are provided automatically to Edge
@@ -107,10 +129,13 @@ you add a function using `auth: 'publishable'`, `'secret'` or `'none'`, set
 `verify_jwt = false` for that function in `supabase/config.toml`, otherwise the
 platform rejects the request before the handler runs.
 
-To run the function locally against the live project:
+`admin-users` is the only path that creates staff accounts; it is required for
+**Admin -> Teachers** to work. `report-summary` is optional.
+
+To run a function locally against the live project:
 
 ```bash
-deno serve -A --port 8787 supabase/functions/report-summary/index.ts
+deno serve -A --port 8787 supabase/functions/admin-users/index.ts
 ```
 
 ## 7. Configure Auth redirects
@@ -139,7 +164,7 @@ npm run build
 ## 9b. Database tests (no Supabase project needed)
 
 The migrations and every security rule can be tested locally against a throwaway
-PostgreSQL container. This recreates the minimum Supabase environment and runs 43
+PostgreSQL container. This recreates the minimum Supabase environment and runs 52
 checks over the real RPCs and RLS policies.
 
 ```bash
@@ -159,19 +184,21 @@ supabase start
 supabase db reset          # applies migrations, then supabase/seed.sql
 ```
 
-Every demo account uses the password `Khuruj#2026`:
+Staff sign in with a **username** (mapped to `<username>@khuruj.local`); every
+demo account uses the password `Khuruj#2026`.
 
-| Email | Role |
+| Username | Role |
 | --- | --- |
-| `admin@khuruj.test` | admin |
-| `mentor@khuruj.test` | mentor (afternoon outings) |
-| `teacher@khuruj.test` | class teacher (going home) |
-| `medical@khuruj.test` | medical approver |
-| `duty@khuruj.test` | duty teacher (Thursday/Friday) |
-| `gate@khuruj.test` | gate security |
-| `student@khuruj.test` | student ‚Äî `2023CS1042` |
-| `student2@khuruj.test` | student ‚Äî `2023EC2087` |
-| `student3@khuruj.test` | student ‚Äî `2022ME3311` |
+| `admin` | admin |
+| `mentor` | mentor (afternoon outings) |
+| `teacher` | class teacher (going home) |
+| `medical` | medical approver |
+| `duty` | duty teacher (Thursday/Friday) |
+| `gate` | gate security |
+
+Students do **not** sign in. They exist as records so staff can raise passes for
+them: `2023CS1042`, `2023EC2087` and `2022ME3311` are their ID-card barcode
+values (the admission numbers).
 
 `supabase/seed.sql` is demo data for a local stack only. Never run it against a
 hosted project that holds real records. The seed is re-runnable: it reuses any

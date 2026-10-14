@@ -8,17 +8,21 @@ project_id = "khuruj"
 
 [api]
 enabled = true
-# Keep public sign-ups available so students can self-register; every new
-# account receives the `student` role until an administrator changes it.
-enable_signup = true
 
 [auth]
 enabled = true
+# No self-registration. Students are records rather than logins, and staff
+# accounts are provisioned by an administrator through the `admin-users`
+# function. This maps to GOTRUE_DISABLE_SIGNUP and does not affect sign-IN.
+enable_signup = false
 # Site URL and redirect allow-list must include the deployed frontend origin.
 site_url = "http://localhost:12000"
 additional_redirect_urls = ["http://localhost:12000", "http://localhost:5173"]
 
 [auth.email]
+# Must stay enabled: this is the email/password provider, which is how staff
+# sign in (usernames map to `<username>@khuruj.local`). Turning it off maps to
+# GOTRUE_EXTERNAL_EMAIL_ENABLED=false and blocks every login.
 enable_signup = true
 enable_confirmations = false
 
@@ -28,3 +32,6 @@ verify_jwt = true
 [db]
 port = 54322
 major_version = 17
+
+[functions.admin-users]
+verify_jwt = true

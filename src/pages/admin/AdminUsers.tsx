@@ -1,26 +1,56 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  adminRevokeUserRole,
-  adminSetUserRole,
+  adminCreateStaff,
+  adminResetPassword,
+  adminSetActive,
+  adminSetUsername,
   listProfiles,
   listUserRoles,
 } from '../../lib/api'
 import { friendlyError } from '../../lib/errors'
-import { APP_ROLES, ROLE_LABELS, type AppRole } from '../../lib/types'
+import { isValidUsername, normaliseUsername } from '../../lib/login'
+import {
+  ROLE_LABELS,
+  STAFF_ROLES,
+  type AppRole,
+  type StaffRole,
+} from '../../lib/types'
 import {
   Alert,
   EmptyState,
+  Field,
+  Modal,
   PageHeader,
   Spinner,
 } from '../../components/ui'
 
+const PASSWORD_HINT = 'At least 8 characters, with a letter and a digit.'
+const USERNAME_ERROR =
+  'Usernames are 3–32 characters: lowercase letters, digits, dot, dash or underscore.'
+
+function passwordProblem(password: string): string | null {
+  if (password.length < 8) return 'Use at least 8 characters.'
+  if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+    return 'Include at least one letter and one digit.'
+  }
+  return null
+}
+
 export function AdminUsers() {
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
-  const profilesQuery = useQuery({ queryKey: ['profiles'], queryFn: listProfiles })
+  const [creating, setCreating] = useState(false)
+  const [resetTarget, setResetTarget] = useState<string | null>(null)
+  const [renameTarget, setRenameTarget] = useState<string | null>(null)
+
+  const profilesQuery = useQuery({
+    queryKey: ['profiles'],
+    queryFn: listProfiles,
+  })
   const rolesQuery = useQuery({ queryKey: ['user-roles'], queryFn: listUserRoles })
 
   const rolesByUser = useMemo(() => {
@@ -38,40 +68,95 @@ export function AdminUsers() {
     void queryClient.invalidateQueries({ queryKey: ['profiles'] })
   }
 
-  const grantMutation = useMutation({
-    mutationFn: ({ userId, role }: { userId: string; role: AppRole }) =>
-      adminSetUserRole(userId, role),
-    onSuccess: () => {
+  function onFailure(err: unknown) {
+    setNotice(null)
+    setError(friendlyError(err))
+  }
+
+  const createMutation = useMutation({
+    mutationFn: adminCreateStaff,
+    onSuccess: (result) => {
       setError(null)
+      setCreating(false)
+      setNotice(`Account “${result.username}” created.`)
       invalidate()
     },
-    onError: (err) => setError(friendlyError(err)),
+    onError: onFailure,
   })
 
-  const revokeMutation = useMutation({
-    mutationFn: ({ userId, role }: { userId: string; role: AppRole }) =>
-      adminRevokeUserRole(userId, role),
+  const resetMutation = useMutation({
+    mutationFn: ({ userId, password }: { userId: string; password: string }) =>
+      adminResetPassword(userId, password),
     onSuccess: () => {
       setError(null)
+      setResetTarget(null)
+      setNotice('Password reset. The user must change it at next sign-in.')
       invalidate()
     },
-    onError: (err) => setError(friendlyError(err)),
+    onError: onFailure,
   })
+
+  const renameMutation = useMutation({
+    mutationFn: ({ userId, username }: { userId: string; username: string }) =>
+      adminSetUsername(userId, username),
+    onSuccess: (result) => {
+      setError(null)
+      setRenameTarget(null)
+      setNotice(`Username changed to “${result.username}”.`)
+      invalidate()
+    },
+    onError: onFailure,
+  })
+
+  const activeMutation = useMutation({
+    mutationFn: ({ userId, isActive }: { userId: string; isActive: boolean }) =>
+      adminSetActive(userId, isActive),
+    onSuccess: (_result, variables) => {
+      setError(null)
+      setNotice(
+        variables.isActive ? 'Account reactivated.' : 'Account deactivated.',
+      )
+      invalidate()
+    },
+    onError: onFailure,
+  })
+
+  const busy =
+    createMutation.isPending ||
+    resetMutation.isPending ||
+    renameMutation.isPending ||
+    activeMutation.isPending
 
   const profiles = (profilesQuery.data ?? []).filter((p) => {
     const term = search.trim().toLowerCase()
     if (!term) return true
     return (
-      (p.email ?? '').toLowerCase().includes(term) ||
+      (p.username ?? '').toLowerCase().includes(term) ||
       (p.full_name ?? '').toLowerCase().includes(term)
     )
   })
 
+  const targetOf = (id: string | null) =>
+    profilesQuery.data?.find((p) => p.id === id) ?? null
+
   return (
     <div>
       <PageHeader
-        title="Users &amp; roles"
-        subtitle="Roles are the server-side source of truth. Changes are audited."
+        title="Teachers &amp; administrators"
+        subtitle="Create staff accounts, set their username and password, and choose the permissions they hold."
+        actions={
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => {
+              setCreating(true)
+              setError(null)
+              setNotice(null)
+            }}
+          >
+            Add teacher
+          </button>
+        }
       />
 
       {error ? (
@@ -79,27 +164,33 @@ export function AdminUsers() {
           <Alert tone="danger">{error}</Alert>
         </div>
       ) : null}
+      {notice ? (
+        <div className="mb-5">
+          <Alert tone="success">{notice}</Alert>
+        </div>
+      ) : null}
 
       <div className="mb-4 max-w-md">
         <input
           className="input"
-          placeholder="Search by name or email"
+          placeholder="Search by username or name"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
 
       {profilesQuery.isLoading ? (
-        <Spinner label="Loading users…" />
+        <Spinner label="Loading accounts…" />
       ) : profiles.length === 0 ? (
         <EmptyState
-          title="No users found"
-          description="Create users in Supabase Auth; profiles are provisioned automatically."
+          title="No staff accounts found"
+          description="Add a teacher to create their username and password."
         />
       ) : (
         <div className="space-y-4">
           {profiles.map((p) => {
             const userRoles = rolesByUser.get(p.id) ?? []
+            const isStaff = userRoles.some((r) => r !== 'student')
             return (
               <div key={p.id} className="card p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -107,52 +198,83 @@ export function AdminUsers() {
                     <p className="font-semibold text-navy-900">
                       {p.full_name || 'Unnamed user'}
                     </p>
-                    <p className="text-sm text-mist-500">{p.email ?? '—'}</p>
-                    <p className="font-mono text-xs text-mist-400">{p.id}</p>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {userRoles.length === 0 ? (
-                      <span className="badge bg-mist-200 text-mist-600">
-                        No roles
-                      </span>
-                    ) : (
-                      userRoles.map((r) => (
-                        <span
-                          key={r}
-                          className="badge bg-navy-100 text-navy-700"
-                        >
-                          {ROLE_LABELS[r]}
+                    <p className="font-mono text-sm text-teal-700">
+                      {p.username ?? '— no username —'}
+                    </p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {userRoles.length === 0 ? (
+                        <span className="badge bg-mist-200 text-mist-600">
+                          No role
                         </span>
-                      ))
-                    )}
+                      ) : (
+                        userRoles.map((r) => (
+                          <span
+                            key={r}
+                            className="badge bg-navy-100 text-navy-700"
+                          >
+                            {ROLE_LABELS[r]}
+                          </span>
+                        ))
+                      )}
+                      {p.is_active === false ? (
+                        <span className="badge bg-red-100 text-red-700">
+                          Deactivated
+                        </span>
+                      ) : null}
+                      {p.must_change_password ? (
+                        <span className="badge bg-amber-100 text-amber-800">
+                          Must change password
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-2 border-t border-mist-200 pt-4">
-                  {APP_ROLES.map((role) => {
-                    const has = userRoles.includes(role)
-                    return (
-                      <button
-                        key={role}
-                        type="button"
-                        disabled={grantMutation.isPending || revokeMutation.isPending}
-                        onClick={() =>
-                          has
-                            ? revokeMutation.mutate({ userId: p.id, role })
-                            : grantMutation.mutate({ userId: p.id, role })
-                        }
-                        className={
-                          has
-                            ? 'rounded-full border border-teal-300 bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800 hover:bg-teal-100'
-                            : 'rounded-full border border-mist-300 bg-white px-3 py-1 text-xs font-medium text-mist-600 hover:bg-mist-100'
-                        }
-                        title={has ? 'Revoke role' : 'Grant role'}
-                      >
-                        {has ? `✓ ${ROLE_LABELS[role]}` : `+ ${ROLE_LABELS[role]}`}
-                      </button>
-                    )
-                  })}
-                </div>
+                {isStaff ? (
+                  <div className="mt-4 flex flex-wrap gap-2 border-t border-mist-200 pt-4">
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={busy}
+                      onClick={() => {
+                        setResetTarget(p.id)
+                        setError(null)
+                        setNotice(null)
+                      }}
+                    >
+                      Reset password
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={busy}
+                      onClick={() => {
+                        setRenameTarget(p.id)
+                        setError(null)
+                        setNotice(null)
+                      }}
+                    >
+                      Change username
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={busy}
+                      onClick={() =>
+                        activeMutation.mutate({
+                          userId: p.id,
+                          isActive: p.is_active === false,
+                        })
+                      }
+                    >
+                      {p.is_active === false ? 'Reactivate' : 'Deactivate'}
+                    </button>
+                  </div>
+                ) : (
+                  <p className="mt-4 border-t border-mist-200 pt-4 text-xs text-mist-500">
+                    This account holds no staff role, so it can reach nothing.
+                  </p>
+                )}
               </div>
             )
           })}
@@ -160,9 +282,312 @@ export function AdminUsers() {
       )}
 
       <p className="mt-4 text-xs text-mist-500">
-        Click a role chip to grant it, or click an active role to revoke it. You
-        cannot remove the last administrator.
+        Only an administrator can change a username. Teachers can change their
+        own password after signing in, but not their username.
       </p>
+
+      <CreateStaffModal
+        open={creating}
+        busy={createMutation.isPending}
+        onClose={() => setCreating(false)}
+        onSubmit={(input) => createMutation.mutate(input)}
+      />
+
+      <ResetPasswordModal
+        open={resetTarget !== null}
+        subject={targetOf(resetTarget)?.username ?? null}
+        busy={resetMutation.isPending}
+        onClose={() => setResetTarget(null)}
+        onSubmit={(password) =>
+          resetTarget && resetMutation.mutate({ userId: resetTarget, password })
+        }
+      />
+
+      <RenameUsernameModal
+        open={renameTarget !== null}
+        current={targetOf(renameTarget)?.username ?? null}
+        busy={renameMutation.isPending}
+        onClose={() => setRenameTarget(null)}
+        onSubmit={(username) =>
+          renameTarget &&
+          renameMutation.mutate({ userId: renameTarget, username })
+        }
+      />
     </div>
+  )
+}
+
+function CreateStaffModal({
+  open,
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean
+  busy: boolean
+  onClose: () => void
+  onSubmit: (input: {
+    username: string
+    fullName: string
+    role: StaffRole
+    password: string
+  }) => void
+}) {
+  const [fullName, setFullName] = useState('')
+  const [username, setUsername] = useState('')
+  const [role, setRole] = useState<StaffRole>('class_teacher')
+  const [password, setPassword] = useState('')
+  const [localError, setLocalError] = useState<string | null>(null)
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    const handle = normaliseUsername(username)
+
+    if (!fullName.trim()) {
+      setLocalError('Enter the teacher’s full name.')
+      return
+    }
+    if (!isValidUsername(handle)) {
+      setLocalError(USERNAME_ERROR)
+      return
+    }
+    const weak = passwordProblem(password)
+    if (weak) {
+      setLocalError(weak)
+      return
+    }
+
+    setLocalError(null)
+    onSubmit({ username: handle, fullName: fullName.trim(), role, password })
+  }
+
+  return (
+    <Modal
+      open={open}
+      title="Add a teacher"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="create-staff-form"
+            className="btn-primary"
+            disabled={busy}
+          >
+            {busy ? 'Creating…' : 'Create account'}
+          </button>
+        </>
+      }
+    >
+      <form id="create-staff-form" onSubmit={submit} className="space-y-4">
+        {localError ? <Alert tone="danger">{localError}</Alert> : null}
+
+        <Field label="Full name" htmlFor="staff-name">
+          <input
+            id="staff-name"
+            className="input"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            placeholder="e.g. Dr. Ayesha Rahman"
+          />
+        </Field>
+
+        <Field
+          label="Username"
+          htmlFor="staff-username"
+          hint="Used to sign in. Lowercase letters, digits, dot, dash or underscore."
+        >
+          <input
+            id="staff-username"
+            className="input font-mono"
+            value={username}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="e.g. ayesha.rahman"
+          />
+        </Field>
+
+        <Field label="Role" htmlFor="staff-role">
+          <select
+            id="staff-role"
+            className="input"
+            value={role}
+            onChange={(e) => setRole(e.target.value as StaffRole)}
+          >
+            {STAFF_ROLES.map((r) => (
+              <option key={r} value={r}>
+                {ROLE_LABELS[r]}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        <Field
+          label="Initial password"
+          htmlFor="staff-password"
+          hint={`${PASSWORD_HINT} They must change it at first sign-in.`}
+        >
+          <input
+            id="staff-password"
+            type="text"
+            className="input font-mono"
+            value={password}
+            autoComplete="new-password"
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </Field>
+      </form>
+    </Modal>
+  )
+}
+
+function ResetPasswordModal({
+  open,
+  subject,
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean
+  subject: string | null
+  busy: boolean
+  onClose: () => void
+  onSubmit: (password: string) => void
+}) {
+  const [password, setPassword] = useState('')
+  const [localError, setLocalError] = useState<string | null>(null)
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    const weak = passwordProblem(password)
+    if (weak) {
+      setLocalError(weak)
+      return
+    }
+    setLocalError(null)
+    onSubmit(password)
+  }
+
+  return (
+    <Modal
+      open={open}
+      title="Reset password"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="reset-password-form"
+            className="btn-primary"
+            disabled={busy}
+          >
+            {busy ? 'Saving…' : 'Set password'}
+          </button>
+        </>
+      }
+    >
+      <form id="reset-password-form" onSubmit={submit} className="space-y-4">
+        {localError ? <Alert tone="danger">{localError}</Alert> : null}
+        <p className="text-sm text-mist-500">
+          Setting a new password for{' '}
+          <span className="font-mono text-navy-800">
+            {subject ?? 'this user'}
+          </span>
+          . They will be required to change it at next sign-in.
+        </p>
+        <Field
+          label="New password"
+          htmlFor="reset-password"
+          hint={PASSWORD_HINT}
+        >
+          <input
+            id="reset-password"
+            type="text"
+            className="input font-mono"
+            value={password}
+            autoComplete="new-password"
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </Field>
+      </form>
+    </Modal>
+  )
+}
+
+function RenameUsernameModal({
+  open,
+  current,
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean
+  current: string | null
+  busy: boolean
+  onClose: () => void
+  onSubmit: (username: string) => void
+}) {
+  const [username, setUsername] = useState('')
+  const [localError, setLocalError] = useState<string | null>(null)
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    const handle = normaliseUsername(username)
+    if (!isValidUsername(handle)) {
+      setLocalError(USERNAME_ERROR)
+      return
+    }
+    setLocalError(null)
+    onSubmit(handle)
+  }
+
+  return (
+    <Modal
+      open={open}
+      title="Change username"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="rename-username-form"
+            className="btn-primary"
+            disabled={busy}
+          >
+            {busy ? 'Saving…' : 'Change username'}
+          </button>
+        </>
+      }
+    >
+      <form id="rename-username-form" onSubmit={submit} className="space-y-4">
+        {localError ? <Alert tone="danger">{localError}</Alert> : null}
+        <p className="text-sm text-mist-500">
+          Current username:{' '}
+          <span className="font-mono text-navy-800">{current ?? '—'}</span>
+        </p>
+        <Field label="New username" htmlFor="rename-username">
+          <input
+            id="rename-username"
+            className="input font-mono"
+            value={username}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            onChange={(e) => setUsername(e.target.value)}
+          />
+        </Field>
+      </form>
+    </Modal>
   )
 }

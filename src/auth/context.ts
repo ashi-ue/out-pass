@@ -13,8 +13,14 @@ export interface AuthState {
   student: Student | null
   /** A student account that is not yet linked to a student record. */
   needsStudentLink: boolean
+  /** The account still holds the temporary password an admin set. */
+  mustChangePassword: boolean
+  /** An administrator has deactivated this account. */
+  isDeactivated: boolean
   refresh: () => Promise<void>
-  signIn: (email: string, password: string) => Promise<void>
+  /** Signs in with a username, mapped to the synthetic login address. */
+  signIn: (username: string, password: string) => Promise<void>
+  changePassword: (newPassword: string) => Promise<void>
   signOut: () => Promise<void>
 }
 

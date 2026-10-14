@@ -378,3 +378,91 @@ export async function adminSetApprovalRule(
   })
   return unwrap<ApprovalRule>(data, error)
 }
+
+// ---------------------------------------------------------------------------
+// Admin: staff accounts
+// ---------------------------------------------------------------------------
+// Creating an account with a password needs the secret key, so these go through
+// the `admin-users` Edge Function, which re-checks the caller's role server-side
+// before touching Auth.
+
+export interface StaffAccountRow {
+  id: string
+  username: string | null
+  full_name: string | null
+  is_active: boolean
+  must_change_password: boolean
+  roles: AppRole[]
+}
+
+interface EdgeError {
+  error?: string
+}
+
+/**
+ * Calls `admin-users` and throws the server's error CODE as an Error, so the
+ * existing `friendlyError` mapping applies. `functions.invoke` only surfaces a
+ * generic message on a non-2xx response, so the body is read explicitly.
+ */
+async function callAdminUsers<T>(body: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.functions.invoke('admin-users', {
+    body,
+  })
+
+  if (error) {
+    // FunctionsHttpError carries the raw Response in `context`. A gateway or
+    // proxy may answer with HTML, so only a well-formed `{ error: CODE }` body
+    // is used; anything else falls through to the original error.
+    const response = (error as { context?: Response }).context
+    if (response && typeof response.clone === 'function') {
+      const payload = (await response
+        .clone()
+        .json()
+        .catch(() => null)) as EdgeError | null
+      if (typeof payload?.error === 'string') throw new Error(payload.error)
+    }
+    throw error
+  }
+
+  return data as T
+}
+
+export function adminCreateStaff(input: {
+  username: string
+  fullName: string
+  role: AppRole
+  password: string
+}): Promise<{ user_id: string; username: string; role: AppRole }> {
+  return callAdminUsers({
+    action: 'create_staff',
+    username: input.username,
+    full_name: input.fullName,
+    role: input.role,
+    password: input.password,
+  })
+}
+
+export function adminResetPassword(
+  userId: string,
+  password: string,
+): Promise<{ user_id: string }> {
+  return callAdminUsers({ action: 'reset_password', user_id: userId, password })
+}
+
+export function adminSetUsername(
+  userId: string,
+  username: string,
+): Promise<{ user_id: string; username: string }> {
+  return callAdminUsers({ action: 'set_username', user_id: userId, username })
+}
+
+export function adminSetActive(
+  userId: string,
+  isActive: boolean,
+): Promise<{ user_id: string; is_active: boolean }> {
+  return callAdminUsers({
+    action: 'set_active',
+    user_id: userId,
+    is_active: isActive,
+  })
+}

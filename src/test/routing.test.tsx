@@ -18,8 +18,11 @@ function state(overrides: Partial<AuthState>): AuthState {
     roles: [],
     student: null,
     needsStudentLink: false,
+    mustChangePassword: false,
+    isDeactivated: false,
     refresh: async () => {},
     signIn: async () => {},
+    changePassword: async () => {},
     signOut: async () => {},
     ...overrides,
   }

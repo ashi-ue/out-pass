@@ -17,7 +17,7 @@ npm run build          # tsc --noEmit && vite build
 ```
 
 Run `supabase/tests/run.sh` after **any** migration change. It applies the real
-migrations to PostgreSQL 17 and checks 43 security rules; it exits non-zero on
+migrations to PostgreSQL 17 and checks 52 security rules; it exits non-zero on
 failure. It never touches the hosted project.
 
 ## Layout
@@ -28,9 +28,13 @@ failure. It never touches the hosted project.
 - `src/lib/` — Supabase client, API wrappers, types, timezone helpers, error
   translation.
 - `supabase/migrations/` — `0001` schema + RLS, `0002` privileged RPCs,
-  `0003` first-admin bootstrap.
+  `0003` first-admin bootstrap, `0004` username logins + forced password change,
+  `0005` bootstrap-admin-by-username.
+- `supabase/functions/` — `admin-users` (the only path that creates staff
+  accounts; holds the secret key server-side), `report-summary` (optional),
+  `_shared/supabaseEnv.ts` (resolves both new and legacy env names).
 - `supabase/tests/` — `00_harness.sql` fakes the Supabase environment, then the
-  test suite runs.
+  test suite runs; `edge_admin_users.mjs` exercises the real Edge Function.
 
 ## Invariants — do not break these
 
@@ -54,6 +58,13 @@ failure. It never touches the hosted project.
 8. **Migrations are additive and idempotent.** No `DROP`/`TRUNCATE` on
    pre-existing data. The unique index on `admission_number` is skipped with a
    warning if legacy duplicates exist.
+9. **Only `admin-users` creates staff accounts.** It is the sole holder of the
+   secret key. It must keep reading the caller's roles from the **database**,
+   never from the token, and must keep refusing `USERNAME_TAKEN`,
+   `WEAK_PASSWORD`, `INVALID_ROLE`, `FORBIDDEN` and `LAST_ADMIN`.
+10. **A username is immutable except by an admin.** `profiles.username` maps to
+    `<username>@khuruj.local`; a trigger blocks a user from changing their own.
+    Students never sign in — they are records only.
 
 ## Gotchas
 
@@ -89,6 +100,13 @@ failure. It never touches the hosted project.
   empty role list and sends everyone to `/student`. Gate redirects on
   `identityReady` (session **and** roles loaded). `src/test/routing.test.tsx`
   covers this; it fails if you revert to `ready`.
+- **Navigate imperatively after a password change.** The Supabase auth event
+  fires as the password is stored, which flips `identityLoaded` and makes
+  `ProtectedRoute` swap the change-password page for a spinner — remounting the
+  route and discarding any render-based `<Navigate>`. Call
+  `navigate(landingPath(roles), { replace: true })` from the submit handler
+  instead. `src/test/changePassword.test.tsx` covers the redirect, the stay-put
+  case and the failure case.
 - **Seed the cache from mutation results.** A decision mutation that only calls
   `invalidateQueries` leaves the badge on the old value until a refetch lands;
   if the page remounts first, the update is lost and the UI disagrees with the
@@ -111,9 +129,11 @@ failure. It never touches the hosted project.
 
 ## Local demo data and browser testing
 
-- `supabase/seed.sql` creates one account per role and three students with
-  barcode admission numbers. Password for every account: `Khuruj#2026`. Apply
-  with `supabase db reset`. Local only — never run it against the hosted project.
+- `supabase/seed.sql` creates one staff account per role plus three students with
+  barcode admission numbers. Staff sign in with a **username**
+  (`admin`, `teacher`, `gate`, …), not an email; password for every account:
+  `Khuruj#2026`. Apply with `supabase db reset`. Local only — never run it
+  against the hosted project.
 - To exercise the UI for real, drive Chromium with Playwright
   (`/usr/bin/chromium`, args `--no-sandbox`). Synthetic typing does reach the
   React controlled login inputs; no session injection is needed.

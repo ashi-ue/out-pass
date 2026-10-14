@@ -14,12 +14,13 @@ interface NavItem {
 
 function navItemsFor(roles: ReturnType<typeof useAuth>['roles']): NavItem[] {
   const items: NavItem[] = []
-  if (isAdmin(roles)) items.push({ to: '/admin', label: 'Admin dashboard', icon: '▤' })
+  if (isAdmin(roles)) {
+    items.push({ to: '/admin', label: 'Admin dashboard', icon: '▤' })
+    items.push({ to: '/admin/users', label: 'Teachers', icon: '⚑' })
+    items.push({ to: '/admin/students', label: 'Students', icon: '▦' })
+  }
   if (isApprover(roles)) items.push({ to: '/approver', label: 'Approvals', icon: '✓' })
   if (isGateSecurity(roles)) items.push({ to: '/gate', label: 'Gate security', icon: '⛭' })
-  if (roles.includes('student') || !isApprover(roles)) {
-    items.push({ to: '/student', label: 'My passes', icon: '▦' })
-  }
   return items
 }
 
@@ -71,11 +72,23 @@ export function Layout({ children }: { children?: ReactNode }) {
         {nav}
         <div className="mt-auto border-t border-navy-700 pt-4">
           <p className="truncate px-2 text-sm font-medium text-white">
-            {profile?.full_name || profile?.email || 'Signed in'}
+            {profile?.full_name || profile?.username || 'Signed in'}
           </p>
-          <p className="px-2 pb-3 text-xs text-teal-200">
+          <p className="px-2 text-xs text-teal-200">
             {primaryRole ? ROLE_LABELS[primaryRole] : 'No role assigned'}
           </p>
+          {profile?.username ? (
+            <p className="truncate px-2 pb-3 font-mono text-xs text-navy-200">
+              {profile.username}
+            </p>
+          ) : null}
+          <NavLink
+            to="/change-password"
+            onClick={() => setMobileOpen(false)}
+            className="block w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-navy-100 hover:bg-navy-700"
+          >
+            Change password
+          </NavLink>
           <button
             type="button"
             onClick={handleSignOut}

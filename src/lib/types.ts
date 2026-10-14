@@ -34,13 +34,27 @@ export type GateEventType = 'gate_out' | 'gate_in'
 
 export interface Profile {
   id: string
+  username: string | null
   full_name: string | null
   email: string | null
   phone: string | null
   is_active: boolean
+  must_change_password: boolean
   created_at: string
   updated_at: string
 }
+
+/** Staff logins. Students are records, not users, so they are absent here. */
+export const STAFF_ROLES = [
+  'admin',
+  'mentor',
+  'class_teacher',
+  'medical_approver',
+  'duty_teacher',
+  'gate_security',
+] as const
+
+export type StaffRole = (typeof STAFF_ROLES)[number]
 
 export interface Student {
   id: string

@@ -97,8 +97,11 @@ function authState(): AuthState {
     roles: ['class_teacher'],
     student: null,
     needsStudentLink: false,
+    mustChangePassword: false,
+    isDeactivated: false,
     refresh: async () => {},
     signIn: async () => {},
+    changePassword: async () => {},
     signOut: async () => {},
   }
 }
