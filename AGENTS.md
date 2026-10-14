@@ -103,6 +103,11 @@ failure. It never touches the hosted project.
   login form stays disabled. Setting a variable does not rebuild; trigger a
   production redeploy. `docs/SETUP.md` §10 has the exact vars and a `curl` check
   against the deployed bundle.
+- **The Vercel deploy needs `vercel.json` for client-side routing.** Vercel
+  resolves URLs against the filesystem, so a Vite SPA 404s on `/login`, `/gate`
+  and `/passes/<id>` unless a catch-all rewrite serves `index.html`. The
+  rewrite's negative lookahead keeps real assets out. `docs/SETUP.md` §10
+  ("Client-side routing") has the pattern; do not delete `vercel.json`.
 
 ## Local demo data and browser testing
 

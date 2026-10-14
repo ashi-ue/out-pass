@@ -216,6 +216,20 @@ curl -s https://khuruj.vercel.app/assets/<that-file> | grep -c nvjhyzqbfmnzohlvg
 A count of `0` means the build had no `VITE_SUPABASE_URL`. A configured build
 contains the URL.
 
+### Client-side routing
+
+Vercel resolves URLs against the filesystem, so a Vite SPA 404s on every route
+except `/`. `vercel.json` holds the catch-all rewrite that serves `index.html`
+for extension-less paths:
+
+```json
+{ "rewrites": [{ "source": "/((?!.*\\.[^/]+$).*)", "destination": "/index.html" }] }
+```
+
+The negative lookahead keeps real files (`/assets/*.js`, images) out of the
+rewrite. Do not delete `vercel.json`; without it, refreshing or deep-linking
+`/login`, `/gate` or `/passes/<id>` returns Vercel's 404 page.
+
 ## 11. Remaining configuration tasks
 
 - [x] Provide the publishable and secret keys (configured in `.env.local`,
