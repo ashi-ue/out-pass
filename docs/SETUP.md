@@ -1,4 +1,4 @@
-# Khuruj — setup instructions
+# Khuruj ‚Äî setup instructions
 
 ## 1. Prerequisites
 
@@ -9,7 +9,7 @@
 ## 2. Environment variables
 
 Copy `.env.example` to `.env.local` and fill in the real values from
-**Supabase Dashboard → Project Settings → API Keys**.
+**Supabase Dashboard ‚Üí Project Settings ‚Üí API Keys**.
 
 ```bash
 cp .env.example .env.local
@@ -18,8 +18,8 @@ cp .env.example .env.local
 | Variable | Scope | Where to get it |
 | --- | --- | --- |
 | `VITE_SUPABASE_URL` | Browser | `https://nvjhyzqbfmnzohlvgdca.supabase.co` |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | Browser | Settings → API Keys → Publishable (`sb_publishable_…`). The legacy `anon` key also works. |
-| `SUPABASE_SECRET_KEY` | Backend only | Settings → API Keys → Secret (`sb_secret_…`). **Never** add a `VITE_` prefix. |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Browser | Settings ‚Üí API Keys ‚Üí Publishable (`sb_publishable_‚Ä¶`). The legacy `anon` key also works. |
+| `SUPABASE_SECRET_KEY` | Backend only | Settings ‚Üí API Keys ‚Üí Secret (`sb_secret_‚Ä¶`). **Never** add a `VITE_` prefix. |
 | `SUPABASE_JWKS_URL` | Backend only | `https://nvjhyzqbfmnzohlvgdca.supabase.co/auth/v1/.well-known/jwks.json` |
 | `SUPABASE_PROJECT_ID` | CLI | `nvjhyzqbfmnzohlvgdca` |
 | `VITE_CAMPUS_TZ` | Browser | Display timezone, e.g. `Asia/Kolkata` |
@@ -39,11 +39,11 @@ than failing silently.
 ## 4. Apply the database migrations
 
 Migrations are additive, idempotent and non-destructive. **They are not applied
-yet** — the hosted project currently has no tables.
+yet** ‚Äî the hosted project currently has no tables.
 
-### Option A — Supabase CLI (recommended)
+### Option A ‚Äî Supabase CLI (recommended)
 
-Needs a **personal access token** (Dashboard → Account → Access Tokens), which is
+Needs a **personal access token** (Dashboard ‚Üí Account ‚Üí Access Tokens), which is
 separate from the API keys above.
 
 ```bash
@@ -52,7 +52,7 @@ supabase link --project-ref nvjhyzqbfmnzohlvgdca
 supabase db push          # applies 0001, 0002, 0003
 ```
 
-### Option B — SQL editor (no access token)
+### Option B ‚Äî SQL editor (no access token)
 
 Paste the three files from `supabase/migrations/` into the dashboard's SQL
 editor **in order** and run them:
@@ -62,15 +62,15 @@ editor **in order** and run them:
 3. `0003_bootstrap_admin.sql`
 
 Both options are safe to re-run: every statement is `if not exists` /
-`create or replace` / `drop policy if exists … create policy`.
+`create or replace` / `drop policy if exists ‚Ä¶ create policy`.
 
 Before pushing, read `docs/DATABASE_INSPECTION.md`. If a `students` table is ever
 imported with duplicate admission numbers, the unique index is skipped with a
-warning — resolve the duplicates and re-run `0001`.
+warning ‚Äî resolve the duplicates and re-run `0001`.
 
 ## 5. Create the first administrator
 
-1. Create a user in **Authentication → Users** (or let them sign up).
+1. Create a user in **Authentication ‚Üí Users** (or let them sign up).
 2. Promote them once, from the SQL editor (runs as `service_role`):
 
 ```sql
@@ -78,7 +78,7 @@ select public.bootstrap_admin('admin@university.edu');
 ```
 
 The function refuses to run if an administrator already exists. After this, all
-further role changes happen in **Admin → Users**.
+further role changes happen in **Admin ‚Üí Users**.
 
 ## 6. Deploy the Edge Function (optional)
 
@@ -115,7 +115,7 @@ deno serve -A --port 8787 supabase/functions/report-summary/index.ts
 
 ## 7. Configure Auth redirects
 
-In **Authentication → URL Configuration**, set the Site URL and add your frontend
+In **Authentication ‚Üí URL Configuration**, set the Site URL and add your frontend
 origin to the redirect allow-list so sign-in links work in production.
 
 ## 8. Generate typed schema (recommended once connected)
@@ -169,15 +169,54 @@ Every demo account uses the password `Khuruj#2026`:
 | `medical@khuruj.test` | medical approver |
 | `duty@khuruj.test` | duty teacher (Thursday/Friday) |
 | `gate@khuruj.test` | gate security |
-| `student@khuruj.test` | student — `2023CS1042` |
-| `student2@khuruj.test` | student — `2023EC2087` |
-| `student3@khuruj.test` | student — `2022ME3311` |
+| `student@khuruj.test` | student ‚Äî `2023CS1042` |
+| `student2@khuruj.test` | student ‚Äî `2023EC2087` |
+| `student3@khuruj.test` | student ‚Äî `2022ME3311` |
 
 `supabase/seed.sql` is demo data for a local stack only. Never run it against a
 hosted project that holds real records. The seed is re-runnable: it reuses any
 account that already exists and never deletes data.
 
-## 10. Remaining configuration tasks
+## 10. Deploy the frontend (Vercel)
+
+The Vercel project `khuruj` builds the app from `main` and serves it at
+`https://khuruj.vercel.app`. Vite reads environment variables at **build time**,
+and only exposes names prefixed with `VITE_` to the browser. The deploy therefore
+needs its own `VITE_`-prefixed variables; the plain `SUPABASE_*` names already in
+the project are not visible to client code.
+
+Set these on the Vercel project (Settings → Environment Variables), for both
+Production and Preview:
+
+| Variable | Value |
+| --- | --- |
+| `VITE_SUPABASE_URL` | `https://nvjhyzqbfmnzohlvgdca.supabase.co` |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | the publishable key (`sb_publishable_…`) |
+| `VITE_CAMPUS_TZ` | `Asia/Kolkata` (optional; defaults to this) |
+
+The publishable key is designed for the browser and is safe here. Never add a
+`VITE_` prefix to `SUPABASE_SECRET_KEY` — that would ship the secret to every
+visitor. The Edge Function reads the secret from its own Supabase secrets.
+
+Adding a variable does not rebuild the site. Redeploy after any change:
+
+```bash
+vercel --prod          # or: Deployments → Redeploy (uncheck "use existing build")
+```
+
+**Symptom of a missing variable:** the login page shows "Supabase is not
+configured", because `isSupabaseConfigured` was resolved to false during the
+build. Confirm with:
+
+```bash
+curl -s https://khuruj.vercel.app/ | grep -o '/assets/index-[^"]*\.js'
+curl -s https://khuruj.vercel.app/assets/<that-file> | grep -c nvjhyzqbfmnzohlvgdca
+```
+
+A count of `0` means the build had no `VITE_SUPABASE_URL`. A configured build
+contains the URL.
+
+## 11. Remaining configuration tasks
 
 - [x] Provide the publishable and secret keys (configured in `.env.local`,
       which is git-ignored; the secret key is backend-only).
