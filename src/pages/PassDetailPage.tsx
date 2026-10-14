@@ -18,6 +18,7 @@ import {
   relativeToNow,
 } from '../lib/time'
 import { REQUEST_TYPE_LABELS, ROLE_LABELS } from '../lib/types'
+import type { PassRequest, PassWithStudent } from '../lib/types'
 import {
   Alert,
   CampusBadge,
@@ -57,32 +58,42 @@ export function PassDetailPage() {
     void queryClient.invalidateQueries({ queryKey: ['campus-status'] })
   }
 
+  // Seed the detail cache from the mutation's authoritative result so the UI
+  // updates immediately, then refetch to reconcile any server-side extras.
+  function applyDecision(updated: PassRequest) {
+    queryClient.setQueryData<PassWithStudent>(['pass', id], (prev) => ({
+      ...(prev ?? (updated as PassWithStudent)),
+      ...updated,
+    }))
+    invalidate()
+  }
+
   const approveMutation = useMutation({
     mutationFn: () => approvePassRequest(id, remarks),
-    onSuccess: () => {
+    onSuccess: (data) => {
       setRemarks('')
       setActionError(null)
-      invalidate()
+      applyDecision(data)
     },
     onError: (err) => setActionError(friendlyError(err)),
   })
 
   const rejectMutation = useMutation({
     mutationFn: () => rejectPassRequest(id, remarks),
-    onSuccess: () => {
+    onSuccess: (data) => {
       setRemarks('')
       setConfirmReject(false)
       setActionError(null)
-      invalidate()
+      applyDecision(data)
     },
     onError: (err) => setActionError(friendlyError(err)),
   })
 
   const cancelMutation = useMutation({
     mutationFn: () => cancelPassRequest(id),
-    onSuccess: () => {
+    onSuccess: (data) => {
       setActionError(null)
-      invalidate()
+      applyDecision(data)
     },
     onError: (err) => setActionError(friendlyError(err)),
   })
