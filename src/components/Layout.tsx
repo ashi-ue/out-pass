@@ -66,7 +66,7 @@ export function Layout({ children }: { children?: ReactNode }) {
       {/* Sidebar */}
       <aside className="hidden w-64 shrink-0 flex-col bg-navy-800 p-4 lg:flex">
         <div className="mb-8 px-2 pt-2">
-          <Logo variant="light" />
+          <Logo variant="light" size={44} />
         </div>
         {nav}
         <div className="mt-auto border-t border-navy-700 pt-4">
