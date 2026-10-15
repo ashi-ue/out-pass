@@ -28,6 +28,22 @@ describe('friendlyError', () => {
     )
   })
 
+  it('explains a stale schema instead of echoing PostgREST', () => {
+    const raw =
+      "Could not find the function public.admin_upsert_student(p_admission_number, p_class_name, p_department, p_full_name) in the schema cache"
+    const msg = friendlyError(new Error(raw))
+    expect(msg).toMatch(/migration/i)
+    expect(msg).not.toMatch(/schema cache/i)
+  })
+
+  it('explains an undeployed Edge Function instead of echoing the platform', () => {
+    const msg = friendlyError(
+      new Error('Failed to send a request to the Edge Function'),
+    )
+    expect(msg).toMatch(/deploy/i)
+    expect(msg).not.toMatch(/Failed to send a request/i)
+  })
+
   it('never returns an empty message', () => {
     expect(friendlyError(null)).toBeTruthy()
     expect(friendlyError(undefined)).toBeTruthy()
