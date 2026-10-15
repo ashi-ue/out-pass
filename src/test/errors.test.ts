@@ -24,7 +24,7 @@ describe('friendlyError', () => {
 
   it('rewrites common auth failures', () => {
     expect(friendlyError(new Error('Invalid login credentials'))).toBe(
-      'Incorrect email or password.',
+      'Incorrect username or password.',
     )
   })
 
