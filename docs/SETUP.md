@@ -133,7 +133,7 @@ The admin page never creates accounts from the browser. It calls the
 New staff receive a **temporary password** and must change it on first sign-in.
 Until they do, every route except `/change-password` redirects them there.
 
-## 6. Deploy the Edge Function (optional)
+## 6. Deploy the Edge Function (required for Admin -> Teachers)
 
 The function uses `@supabase/server` (`withSupabase`) for JWT verification, client
 creation and CORS. On Edge Functions it is imported directly with no install
@@ -146,11 +146,25 @@ import { withSupabase } from 'npm:@supabase/server@1'
 It is also a dev dependency (`npm install @supabase/server`) so it type-checks
 and can run locally with `deno serve`.
 
+Deploying needs a **Supabase personal access token** (`sbp_...`), created at
+<https://supabase.com/dashboard/account/tokens>. The project's secret key
+(`sb_secret_...`) is a data/Auth key: it can read and write rows and manage auth
+users, but it **cannot** deploy functions or run migrations. Log the CLI in
+first:
+
 ```bash
+supabase login                      # or: export SUPABASE_ACCESS_TOKEN=sbp_...
+supabase link --project-ref nvjhyzqbfmnzohlvgdca
 supabase secrets set SUPABASE_SECRET_KEY=sb_secret_... \
-                     KHURUJ_ALLOWED_ORIGIN=https://your-frontend-origin
-supabase functions deploy admin-users report-summary
+                     KHURUJ_ALLOWED_ORIGIN=https://khuruj.vercel.app
+supabase functions deploy admin-users
+supabase functions deploy report-summary     # optional
 ```
+
+Until `admin-users` is deployed, **Admin -> Teachers -> Add teacher** cannot
+work: the browser calls the function, gets a 404 from the platform, and the modal
+shows "Failed to send a request to the Edge Function". It never reports a false
+success.
 
 `SUPABASE_URL` and the publishable key are provided automatically to Edge
 Functions; only the secret key and the allowed origin need to be set.
@@ -195,7 +209,7 @@ npm run build
 ## 9b. Database tests (no Supabase project needed)
 
 The migrations and every security rule can be tested locally against a throwaway
-PostgreSQL container. This recreates the minimum Supabase environment and runs 52
+PostgreSQL container. This recreates the minimum Supabase environment and runs 55
 checks over the real RPCs and RLS policies.
 
 ```bash

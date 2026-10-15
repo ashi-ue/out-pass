@@ -489,7 +489,12 @@ begin
   values
     (btrim(p_admission_number), p_full_name, p_department, p_program,
      p_academic_year, p_email, p_phone)
-  on conflict (admission_number) do update
+  -- The uniqueness of students.admission_number is a PARTIAL index
+  -- (where admission_number is not null), so the conflict target must repeat
+  -- that predicate. Without it Postgres cannot infer the index and errors with
+  -- "there is no unique or exclusion constraint matching the ON CONFLICT
+  -- specification".
+  on conflict (admission_number) where admission_number is not null do update
     set full_name     = coalesce(excluded.full_name, s.full_name),
         department    = coalesce(excluded.department, s.department),
         program       = coalesce(excluded.program, s.program),

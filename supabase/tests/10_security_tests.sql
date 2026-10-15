@@ -406,6 +406,49 @@ begin
   perform public.admin_set_approval_rule('afternoon_out', 'mentor', true);
 end $$;
 
+-- Regression: admin_upsert_student() used `on conflict (admission_number)` while
+-- the uniqueness of that column is a PARTIAL index (where ... is not null).
+-- Postgres could not infer the index, so every create/update of a student
+-- failed with "no unique or exclusion constraint matching the ON CONFLICT
+-- specification". This was only caught against the hosted project, so it is
+-- pinned here.
+--
+-- The inner BEGIN/EXCEPTION blocks matter: without them a raised error aborts
+-- the whole DO block, the checks silently vanish from the result set, and the
+-- suite still reports success. Recording the error as a FAIL keeps the run
+-- honest.
+do $$
+declare v_row public.students;
+begin
+  begin
+    v_row := public.admin_upsert_student('ADM-REG-001', 'Regression Student',
+                                         'CSE', 'BSc', 2, 'reg@uni.edu', null);
+    perform public.test_record('Admin can create a student record', 'ADM-REG-001',
+      v_row.admission_number, v_row.admission_number = 'ADM-REG-001');
+  exception when others then
+    perform public.test_record('Admin can create a student record', 'ADM-REG-001',
+      'error: ' || sqlerrm, false);
+  end;
+
+  begin
+    -- Upsert path: same admission number must UPDATE, not duplicate.
+    v_row := public.admin_upsert_student('ADM-REG-001', 'Regression Student v2');
+    perform public.test_record('Admin upsert updates in place', '1',
+      (select count(*)::text from public.students
+        where admission_number = 'ADM-REG-001'),
+      (select count(*) from public.students
+        where admission_number = 'ADM-REG-001') = 1);
+    perform public.test_record('Admin upsert applies the new name',
+      'Regression Student v2', v_row.full_name,
+      v_row.full_name = 'Regression Student v2');
+  exception when others then
+    perform public.test_record('Admin upsert updates in place', '1',
+      'error: ' || sqlerrm, false);
+    perform public.test_record('Admin upsert applies the new name',
+      'Regression Student v2', 'error: ' || sqlerrm, false);
+  end;
+end $$;
+
 -- A student cannot read the audit log.
 select public.test_set_user('11111111-1111-1111-1111-111111111111');
 do $$
