@@ -29,7 +29,8 @@ failure. It never touches the hosted project.
   translation.
 - `supabase/migrations/` — `0001` schema + RLS, `0002` privileged RPCs,
   `0003` first-admin bootstrap, `0004` username logins + forced password change,
-  `0005` bootstrap-admin-by-username.
+  `0005` bootstrap-admin-by-username, `0006` multi-role teachers +
+  `students.class_name`.
 - `supabase/functions/` — `admin-users` (the only path that creates staff
   accounts; holds the secret key server-side), `report-summary` (optional),
   `_shared/supabaseEnv.ts` (resolves both new and legacy env names).
@@ -65,6 +66,18 @@ failure. It never touches the hosted project.
 10. **A username is immutable except by an admin.** `profiles.username` maps to
     `<username>@khuruj.local`; a trigger blocks a user from changing their own.
     Students never sign in — they are records only.
+11. **A teacher holds several roles, and that must not widen approval scope.**
+    Since `0006` an account normally carries `mentor` + `class_teacher` +
+    `duty_teacher` at once, and `admin-users` takes a `roles[]` list. Scope is
+    still decided per request type by `app.can_decide`, which compares the
+    type's configured approver role against the caller's whole role set — a
+    teacher who lacks the type's role is still refused. Never replace this with
+    a blanket "is a teacher" check.
+12. **A student record keeps what it already had.** The Add-student form
+    collects only admission number, class, name and department, but
+    `admin_upsert_student` updates with `coalesce`, so an omitted field is left
+    untouched rather than cleared. `class_name` is mirrored to `academic_year`
+    only when the label starts with a number.
 
 ## Gotchas
 

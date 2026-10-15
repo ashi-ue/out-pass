@@ -8,15 +8,21 @@
 // client. The publishable key alone cannot call the Auth admin API.
 //
 // Actions (POST body `{ action, ... }`):
-//   create_staff    { username, full_name, role, password }  -> new account
-//   reset_password  { user_id, password }                    -> force change
+//   create_staff    { username, full_name, roles[], password }  -> new account
+//   set_roles       { user_id, roles[] }                        -> replace roles
+//   reset_password  { user_id, password }                       -> force change
 //   set_username    { user_id, username }
 //   set_active      { user_id, is_active }
+//
+// A teacher normally holds all three teaching roles at once (mentor, class
+// teacher, duty teacher), so `roles` is a list. `role` (singular) is still
+// accepted for older clients.
 //
 // Deploy:  supabase functions deploy admin-users
 // ---------------------------------------------------------------------------
 
 import { withSupabase } from 'npm:@supabase/server@1'
+import type { SupabaseContext } from 'npm:@supabase/server@1'
 import { resolveSupabaseEnv } from '../_shared/supabaseEnv.ts'
 
 const ALLOWED_ORIGIN = Deno.env.get('KHURUJ_ALLOWED_ORIGIN')
@@ -74,6 +80,54 @@ function normaliseUsername(value: unknown): string | null {
   return USERNAME_RE.test(username) ? username : null
 }
 
+/**
+ * Reads a role list from either `roles` (array) or the legacy `role` (string).
+ * Returns null when anything is missing or unrecognised, so the caller can
+ * answer INVALID_ROLE rather than silently granting a subset.
+ */
+function readRoles(body: Record<string, unknown>): AssignableRole[] | null {
+  const raw = Array.isArray(body.roles)
+    ? body.roles
+    : typeof body.role === 'string'
+      ? [body.role]
+      : null
+  if (!raw || raw.length === 0) return null
+
+  const seen = new Set<AssignableRole>()
+  for (const value of raw) {
+    if (!ASSIGNABLE_ROLES.includes(value as AssignableRole)) return null
+    seen.add(value as AssignableRole)
+  }
+  return [...seen]
+}
+
+/**
+ * True when `userId` is an administrator and no OTHER active administrator
+ * exists. Used by `set_active` and `set_roles` so the project can never be left
+ * with no way in.
+ */
+async function wouldRemoveLastAdmin(
+  admin: SupabaseContext['supabaseAdmin'],
+  userId: string,
+): Promise<boolean> {
+  const { data: targetRoles } = await admin
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', userId)
+  if (!(targetRoles ?? []).some((r) => r.role === 'admin')) return false
+
+  const { data: admins } = await admin
+    .from('user_roles')
+    .select('user_id, profiles!inner(is_active)')
+    .eq('role', 'admin')
+  const activeAdmins = (admins ?? []).filter(
+    (r) =>
+      (r as { user_id?: string }).user_id !== userId &&
+      (r as { profiles?: { is_active?: boolean } }).profiles?.is_active,
+  )
+  return activeAdmins.length === 0
+}
+
 export default {
   fetch: withSupabase(
     {
@@ -100,13 +154,13 @@ export default {
       // Authorize from the database. The RLS-scoped client only returns rows
       // this caller may see, and `user_roles_select_self_or_admin` permits
       // reading one's own roles — so a non-admin sees no `admin` row.
-      const { data: roles, error: roleError } = await ctx.supabase
+      const { data: callerRoles, error: roleError } = await ctx.supabase
         .from('user_roles')
         .select('role')
         .eq('user_id', ctx.userClaims?.id)
 
       if (roleError) return fail('ROLE_LOOKUP_FAILED', 500, origin)
-      if (!(roles ?? []).some((r) => r.role === 'admin')) {
+      if (!(callerRoles ?? []).some((r) => r.role === 'admin')) {
         return fail('FORBIDDEN', 403, origin)
       }
 
@@ -125,14 +179,12 @@ export default {
         const username = normaliseUsername(body.username)
         const fullName =
           typeof body.full_name === 'string' ? body.full_name.trim() : ''
-        const role = body.role as AssignableRole
+        const roles = readRoles(body)
         const passwordIssue = passwordProblem(body.password)
 
         if (!username) return fail('INVALID_USERNAME', 400, origin)
         if (!fullName) return fail('INVALID_INPUT', 400, origin)
-        if (!ASSIGNABLE_ROLES.includes(role)) {
-          return fail('INVALID_ROLE', 400, origin)
-        }
+        if (!roles) return fail('INVALID_ROLE', 400, origin)
         if (passwordIssue) return fail(passwordIssue, 400, origin)
 
         // Pre-check for a friendly code. The unique index is still the real
@@ -180,18 +232,20 @@ export default {
 
         const { error: roleGrantError } = await admin
           .from('user_roles')
-          .insert({
-            user_id: userId,
-            role,
-            granted_by: ctx.userClaims?.id ?? null,
-          })
+          .insert(
+            roles.map((role) => ({
+              user_id: userId,
+              role,
+              granted_by: ctx.userClaims?.id ?? null,
+            })),
+          )
 
         if (roleGrantError) {
           await admin.auth.admin.deleteUser(userId)
           return fail('ROLE_GRANT_FAILED', 500, origin)
         }
 
-        return json({ user_id: userId, username, role }, 200, origin)
+        return json({ user_id: userId, username, roles }, 200, origin)
       }
 
       // The remaining actions operate on an existing account.
@@ -254,6 +308,38 @@ export default {
         return json({ user_id: userId, username }, 200, origin)
       }
 
+      // -- set_roles ---------------------------------------------------------
+      if (action === 'set_roles') {
+        const roles = readRoles(body)
+        if (!roles) return fail('INVALID_ROLE', 400, origin)
+
+        // Refuse to strip the admin role from the last active administrator.
+        if (!roles.includes('admin')) {
+          const blocked = await wouldRemoveLastAdmin(admin, userId)
+          if (blocked) return fail('LAST_ADMIN', 409, origin)
+        }
+
+        // Replace wholesale: delete then insert, so the two always agree.
+        const { error: deleteError } = await admin
+          .from('user_roles')
+          .delete()
+          .eq('user_id', userId)
+        if (deleteError) return fail('ROLE_UPDATE_FAILED', 500, origin)
+
+        const { error: insertError } = await admin
+          .from('user_roles')
+          .insert(
+            roles.map((role) => ({
+              user_id: userId,
+              role,
+              granted_by: ctx.userClaims?.id ?? null,
+            })),
+          )
+        if (insertError) return fail('ROLE_UPDATE_FAILED', 500, origin)
+
+        return json({ user_id: userId, roles }, 200, origin)
+      }
+
       // -- set_active --------------------------------------------------------
       if (action === 'set_active') {
         const isActive = body.is_active
@@ -263,26 +349,8 @@ export default {
 
         // Refuse to deactivate the last active administrator.
         if (!isActive) {
-          const { data: targetRoles } = await admin
-            .from('user_roles')
-            .select('role')
-            .eq('user_id', userId)
-          const isAdmin = (targetRoles ?? []).some((r) => r.role === 'admin')
-
-          if (isAdmin) {
-            const { data: admins } = await admin
-              .from('user_roles')
-              .select('user_id, profiles!inner(is_active)')
-              .eq('role', 'admin')
-            const activeAdmins = (admins ?? []).filter(
-              (r) =>
-                (r as { profiles?: { is_active?: boolean } }).profiles
-                  ?.is_active,
-            )
-            if (activeAdmins.length <= 1) {
-              return fail('LAST_ADMIN', 409, origin)
-            }
-          }
+          const blocked = await wouldRemoveLastAdmin(admin, userId)
+          if (blocked) return fail('LAST_ADMIN', 409, origin)
         }
 
         const { error } = await admin

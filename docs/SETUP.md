@@ -49,14 +49,14 @@ separate from the API keys above.
 ```bash
 supabase login
 supabase link --project-ref nvjhyzqbfmnzohlvgdca
-supabase db push          # applies 0001 .. 0005
+supabase db push          # applies 0001 .. 0006
 ```
 
 ### Option B: SQL editor, one file (no access token)
 
 Open the dashboard SQL editor, paste the whole of
 **`supabase/setup_hosted.sql`**, and run it once. That file is a straight
-concatenation of `0001` .. `0005` plus a call to bootstrap the first
+concatenation of `0001` .. `0006` plus a call to bootstrap the first
 administrator for the username `admin`, so it provisions the project in a
 single step.
 
@@ -74,9 +74,17 @@ Paste the files from `supabase/migrations/` into the dashboard SQL editor
 3. `0003_bootstrap_admin.sql`
 4. `0004_username_login.sql`
 5. `0005_bootstrap_admin_username.sql`
+6. `0006_teacher_roles_and_student_fields.sql`
 
 All three options are safe to re-run: every statement is `if not exists` /
 `create or replace` / `drop policy if exists ... create policy`.
+
+> **Already provisioned the project?** You only need
+> `0006_teacher_roles_and_student_fields.sql`. Paste just that file into the SQL
+> editor and run it. It adds `students.class_name` and replaces
+> `admin_upsert_student`, and leaves every existing row untouched. It is the fix
+> for the "no unique or exclusion constraint matching the ON CONFLICT
+> specification" error seen when adding a student.
 
 Before pushing, read `docs/DATABASE_INSPECTION.md`. If a `students` table is ever
 imported with duplicate admission numbers, the unique index is skipped with a
@@ -124,11 +132,31 @@ The admin page never creates accounts from the browser. It calls the
 - verifies the caller's JWT and reads their roles from the **database** (not the
   token), so only a real administrator can provision accounts;
 - creates the auth user with the service role, sets `must_change_password`, and
-  grants the chosen role;
+  grants the chosen roles;
 - refuses duplicate usernames (`USERNAME_TAKEN`), weak passwords
   (`WEAK_PASSWORD`), unknown roles (`INVALID_ROLE`) and any non-admin caller
   (`FORBIDDEN`);
-- will not deactivate the last active administrator (`LAST_ADMIN`).
+- will not deactivate the last active administrator, nor strip its `admin` role
+  (`LAST_ADMIN`).
+
+The body takes a **`roles` list**, not a single role:
+
+| Action | Body | Effect |
+| --- | --- | --- |
+| `create_staff` | `{ username, full_name, roles[], password }` | Creates the account and grants every listed role |
+| `set_roles` | `{ user_id, roles[] }` | Replaces the account's role set wholesale |
+| `reset_password` | `{ user_id, password }` | Forces a change at next sign-in |
+| `set_username` | `{ user_id, username }` | Renames (admin only) |
+| `set_active` | `{ user_id, is_active }` | Enables or disables the account |
+
+**A teacher normally holds all three teaching roles** — `mentor`,
+`class_teacher` and `duty_teacher` — because the same person covers afternoon
+outings, going-home requests and Thursday/Friday permissions. **Add teacher**
+pre-selects all three; the **Edit roles** button on each account changes them
+later. Holding several roles does **not** widen approval scope: `app.can_decide`
+still checks the role configured for each request type, so a teacher only
+approves the types they are meant to. `admin`, `medical_approver` and
+`gate_security` are separate duties and are never granted automatically.
 
 New staff receive a **temporary password** and must change it on first sign-in.
 Until they do, every route except `/change-password` redirects them there.
@@ -180,8 +208,29 @@ platform rejects the request before the handler runs.
 To run a function locally against the live project:
 
 ```bash
+export SUPABASE_URL=https://nvjhyzqbfmnzohlvgdca.supabase.co
+export SUPABASE_PUBLISHABLE_KEY=<publishable key>
+export SUPABASE_SECRET_KEY=<secret key>          # never commit this
+export SUPABASE_JWKS_URL=$SUPABASE_URL/auth/v1/.well-known/jwks.json
+export KHURUJ_ALLOWED_ORIGIN=https://khuruj.vercel.app
+
 deno serve -A --port 8787 supabase/functions/admin-users/index.ts
 ```
+
+That server can then be driven by the end-to-end suite, which proves the
+authorization logic on the **real** hosted data before deploying:
+
+```bash
+LOCAL_URL=$SUPABASE_URL \
+LOCAL_PUBLISHABLE=$SUPABASE_PUBLISHABLE_KEY \
+LOCAL_SECRET=$SUPABASE_SECRET_KEY \
+FUNCTION_URL=http://127.0.0.1:8787 \
+node supabase/tests/edge_admin_users.mjs
+```
+
+`LOCAL_URL` points the suite's Auth and REST calls at the hosted project;
+`FUNCTION_URL` points only the function calls at the local server. The suite
+creates its own fixtures and deletes them at the end.
 
 ## 7. Configure Auth redirects
 
@@ -209,14 +258,16 @@ npm run build
 ## 9b. Database tests (no Supabase project needed)
 
 The migrations and every security rule can be tested locally against a throwaway
-PostgreSQL container. This recreates the minimum Supabase environment and runs 55
+PostgreSQL container. This recreates the minimum Supabase environment and runs 60
 checks over the real RPCs and RLS policies.
 
 ```bash
 ./supabase/tests/run.sh        # requires Docker
 ```
 
-It exits non-zero if any check fails. Run this after changing any migration.
+It exits non-zero if any check fails, and also if the suite did not run to
+completion (a missing Docker daemon or a migration that fails to apply is
+reported as an error, never as a pass). Run this after changing any migration.
 
 ## 9c. Local demo data (optional)
 
@@ -244,6 +295,13 @@ demo account uses the password `Khuruj#2026`.
 Students do **not** sign in. They exist as records so staff can raise passes for
 them: `2023CS1042`, `2023EC2087` and `2022ME3311` are their ID-card barcode
 values (the admission numbers).
+
+**Add student** collects four fields: admission number, class, name and
+department. The class box takes a label such as `3rd Year, CSE`; when it starts
+with a number that number is also stored as `academic_year`, so the label and the
+numeric year never disagree. `program`, `email` and `phone` still exist on the
+table and are shown if present, but the form no longer asks for them, and an
+update never clears a value that was already stored.
 
 `supabase/seed.sql` is demo data for a local stack only. Never run it against a
 hosted project that holds real records. The seed is re-runnable: it reuses any

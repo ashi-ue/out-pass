@@ -10,7 +10,9 @@ vi.mock('../lib/supabase', () => ({
   supabaseConfigError: null,
 }))
 
-const { adminCreateStaff, adminSetActive } = await import('../lib/api')
+const { adminCreateStaff, adminSetActive, adminSetRoles } = await import(
+  '../lib/api'
+)
 
 function httpError(status: number, body: unknown) {
   const response = new Response(JSON.stringify(body), {
@@ -30,7 +32,11 @@ describe('admin-users Edge Function client', () => {
 
   it('returns the created account on success', async () => {
     invoke.mockResolvedValue({
-      data: { user_id: 'u1', username: 'ayesha', role: 'class_teacher' },
+      data: {
+        user_id: 'u1',
+        username: 'ayesha',
+        roles: ['mentor', 'class_teacher', 'duty_teacher'],
+      },
       error: null,
     })
 
@@ -38,7 +44,7 @@ describe('admin-users Edge Function client', () => {
       adminCreateStaff({
         username: 'ayesha',
         fullName: 'Ayesha Rahman',
-        role: 'class_teacher',
+        roles: ['mentor', 'class_teacher', 'duty_teacher'],
         password: 'secret123',
       }),
     ).resolves.toMatchObject({ user_id: 'u1', username: 'ayesha' })
@@ -48,7 +54,7 @@ describe('admin-users Edge Function client', () => {
         action: 'create_staff',
         username: 'ayesha',
         full_name: 'Ayesha Rahman',
-        role: 'class_teacher',
+        roles: ['mentor', 'class_teacher', 'duty_teacher'],
         password: 'secret123',
       },
     })
@@ -66,10 +72,29 @@ describe('admin-users Edge Function client', () => {
       adminCreateStaff({
         username: 'taken',
         fullName: 'X',
-        role: 'mentor',
+        roles: ['mentor'],
         password: 'secret123',
       }),
     ).rejects.toThrow('USERNAME_TAKEN')
+  })
+
+  it('sends set_roles with the full role list', async () => {
+    invoke.mockResolvedValue({
+      data: { user_id: 'u1', roles: ['mentor', 'class_teacher'] },
+      error: null,
+    })
+
+    await expect(
+      adminSetRoles('u1', ['mentor', 'class_teacher']),
+    ).resolves.toMatchObject({ roles: ['mentor', 'class_teacher'] })
+
+    expect(invoke).toHaveBeenCalledWith('admin-users', {
+      body: {
+        action: 'set_roles',
+        user_id: 'u1',
+        roles: ['mentor', 'class_teacher'],
+      },
+    })
   })
 
   it('surfaces a rejection from a non-admin caller', async () => {

@@ -56,6 +56,20 @@ export const STAFF_ROLES = [
 
 export type StaffRole = (typeof STAFF_ROLES)[number]
 
+/**
+ * The three roles a teacher holds. A teacher is one person with one login, but
+ * approving passes is split across three duties — afternoon outings (mentor),
+ * going home (class teacher) and Thursday/Friday (duty teacher) — so an account
+ * normally holds all three at once.
+ */
+export const TEACHER_ROLES = [
+  'mentor',
+  'class_teacher',
+  'duty_teacher',
+] as const
+
+export type TeacherRole = (typeof TEACHER_ROLES)[number]
+
 export interface Student {
   id: string
   admission_number: string
@@ -63,6 +77,8 @@ export interface Student {
   department: string | null
   program: string | null
   academic_year: number | null
+  /** Human label, e.g. "3rd Year, CSE". Mirrored to academic_year. */
+  class_name: string | null
   email: string | null
   phone: string | null
   user_id: string | null

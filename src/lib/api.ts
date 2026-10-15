@@ -11,6 +11,7 @@ import type {
   PassWithStudent,
   Profile,
   RequestType,
+  StaffRole,
   Student,
 } from './types'
 
@@ -334,10 +335,8 @@ export interface UpsertStudentInput {
   admissionNumber: string
   fullName: string
   department?: string | null
-  program?: string | null
-  academicYear?: number | null
-  email?: string | null
-  phone?: string | null
+  /** Human label, e.g. "3rd Year, CSE". Mirrored to academic year server-side. */
+  className?: string | null
 }
 
 export async function adminUpsertStudent(
@@ -347,10 +346,7 @@ export async function adminUpsertStudent(
     p_admission_number: input.admissionNumber,
     p_full_name: input.fullName,
     p_department: input.department ?? null,
-    p_program: input.program ?? null,
-    p_academic_year: input.academicYear ?? null,
-    p_email: input.email ?? null,
-    p_phone: input.phone ?? null,
+    p_class_name: input.className ?? null,
   })
   return unwrap<Student>(data, error)
 }
@@ -430,16 +426,24 @@ async function callAdminUsers<T>(body: Record<string, unknown>): Promise<T> {
 export function adminCreateStaff(input: {
   username: string
   fullName: string
-  role: AppRole
+  roles: StaffRole[]
   password: string
-}): Promise<{ user_id: string; username: string; role: AppRole }> {
+}): Promise<{ user_id: string; username: string; roles: StaffRole[] }> {
   return callAdminUsers({
     action: 'create_staff',
     username: input.username,
     full_name: input.fullName,
-    role: input.role,
+    roles: input.roles,
     password: input.password,
   })
+}
+
+/** Replace an existing account's staff roles wholesale. */
+export function adminSetRoles(
+  userId: string,
+  roles: StaffRole[],
+): Promise<{ user_id: string; roles: StaffRole[] }> {
+  return callAdminUsers({ action: 'set_roles', user_id: userId, roles })
 }
 
 export function adminResetPassword(
