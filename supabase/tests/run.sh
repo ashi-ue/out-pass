@@ -20,6 +20,14 @@ if ! docker info >/dev/null 2>&1; then
   DOCKER="sudo docker"
 fi
 
+# Without this guard a missing daemon makes every step fail silently and the
+# runner still prints "ALL DATABASE TESTS PASSED" — a green result for a run
+# that never happened.
+if ! $DOCKER info >/dev/null 2>&1; then
+  echo "==> Docker is not available; cannot run the database tests." >&2
+  exit 2
+fi
+
 cleanup() { $DOCKER rm -f "$CONTAINER" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
@@ -27,20 +35,37 @@ echo "==> starting $IMAGE as $CONTAINER"
 $DOCKER rm -f "$CONTAINER" >/dev/null 2>&1 || true
 $DOCKER run -d --name "$CONTAINER" -e POSTGRES_PASSWORD=postgres "$IMAGE" >/dev/null
 
+started=0
 for _ in $(seq 1 60); do
-  $DOCKER exec "$CONTAINER" pg_isready -U postgres >/dev/null 2>&1 && break
+  if $DOCKER exec "$CONTAINER" pg_isready -U postgres >/dev/null 2>&1; then
+    started=1
+    break
+  fi
   sleep 1
 done
+
+if [ "$started" -ne 1 ]; then
+  echo "==> Postgres did not become ready in $CONTAINER" >&2
+  exit 2
+fi
 
 run_sql() {
   $DOCKER exec -i "$CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 -q < "$1"
 }
 
 echo "==> applying harness and migrations"
-run_sql "$HERE/00_harness.sql"
+# A failure here must stop the run: otherwise the tests execute against a
+# half-built schema and the summary is meaningless.
+if ! run_sql "$HERE/00_harness.sql"; then
+  echo "==> harness failed to apply" >&2
+  exit 2
+fi
 for f in "$ROOT"/supabase/migrations/*.sql; do
   echo "    - $(basename "$f")"
-  run_sql "$f"
+  if ! run_sql "$f"; then
+    echo "==> $(basename "$f") failed to apply" >&2
+    exit 2
+  fi
 done
 
 echo "==> running security tests"
@@ -51,6 +76,13 @@ printf '%s\n' "$output"
 status=0
 if printf '%s' "$output" | grep -q 'KHURUJ TESTS FAILED'; then
   status=1
+fi
+
+# Guard against a run that never reached the summary (e.g. the suite file failed
+# to parse): no results banner means no verdict, so treat it as a failure.
+if ! printf '%s' "$output" | grep -q 'Khuruj test results'; then
+  echo "==> The test suite did not run to completion" >&2
+  status=2
 fi
 
 if [ $status -eq 0 ]; then

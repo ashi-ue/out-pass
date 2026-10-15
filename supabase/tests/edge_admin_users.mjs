@@ -17,6 +17,12 @@ const URL = process.env.LOCAL_URL ?? 'http://127.0.0.1:54321'
 const PUBLISHABLE = process.env.LOCAL_PUBLISHABLE
 const SECRET = process.env.LOCAL_SECRET
 
+// The function endpoint can be overridden separately so the same suite can run
+// against a locally-served function (`deno serve`) pointed at the hosted
+// project's Auth/REST — i.e. proving the function on real data before deploy.
+const FUNCTION_URL =
+  process.env.FUNCTION_URL ?? `${URL}/functions/v1/admin-users`
+
 if (!PUBLISHABLE || !SECRET) {
   console.error(
     'Set LOCAL_PUBLISHABLE and LOCAL_SECRET (see `supabase status`).',
@@ -35,7 +41,7 @@ function check(name, ok, detail = '') {
 }
 
 async function callFn(token, body) {
-  const res = await fetch(`${URL}/functions/v1/admin-users`, {
+  const res = await fetch(FUNCTION_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -89,12 +95,14 @@ const adminToken = signIn.session.access_token
 check('admin can sign in with username-derived email', Boolean(adminToken))
 
 // --- create a teacher -------------------------------------------------------
+// A teacher is created with all three teaching roles at once.
 const teacherUsername = `teacher${stamp}`
+const teacherRoles = ['mentor', 'class_teacher', 'duty_teacher']
 const createRes = await callFn(adminToken, {
   action: 'create_staff',
   username: teacherUsername,
   full_name: 'Test Teacher',
-  role: 'class_teacher',
+  roles: teacherRoles,
   password: 'TeacherPass123',
 })
 check(
@@ -132,9 +140,48 @@ const { data: roles } = await admin
   .select('role')
   .eq('user_id', teacherId)
 check(
-  'teacher holds exactly the class_teacher role',
-  roles?.length === 1 && roles[0].role === 'class_teacher',
+  'teacher holds all three teaching roles',
+  roles?.length === 3 &&
+    teacherRoles.every((r) => roles.some((row) => row.role === r)),
   JSON.stringify(roles),
+)
+
+// --- set_roles replaces the whole set --------------------------------------
+const setRolesRes = await callFn(adminToken, {
+  action: 'set_roles',
+  user_id: teacherId,
+  roles: ['mentor', 'gate_security'],
+})
+const { data: rolesAfter } = await admin
+  .from('user_roles')
+  .select('role')
+  .eq('user_id', teacherId)
+check(
+  'set_roles replaces the role set exactly',
+  setRolesRes.status === 200 &&
+    rolesAfter?.length === 2 &&
+    rolesAfter.some((r) => r.role === 'mentor') &&
+    rolesAfter.some((r) => r.role === 'gate_security'),
+  JSON.stringify(rolesAfter),
+)
+
+// Restore the teaching roles for the approval checks below.
+await callFn(adminToken, {
+  action: 'set_roles',
+  user_id: teacherId,
+  roles: teacherRoles,
+})
+
+// --- an empty role list is refused -----------------------------------------
+const emptyRolesRes = await callFn(adminToken, {
+  action: 'set_roles',
+  user_id: teacherId,
+  roles: [],
+})
+check(
+  'an empty role list is refused with INVALID_ROLE',
+  emptyRolesRes.status === 400 && emptyRolesRes.payload?.error === 'INVALID_ROLE',
+  `${emptyRolesRes.status} ${JSON.stringify(emptyRolesRes.payload)}`,
 )
 
 // --- duplicate username rejected -------------------------------------------
@@ -195,7 +242,7 @@ check(
 )
 
 // --- an unauthenticated caller is refused ----------------------------------
-const anonRes = await fetch(`${URL}/functions/v1/admin-users`, {
+const anonRes = await fetch(FUNCTION_URL, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json', apikey: PUBLISHABLE },
   body: JSON.stringify({ action: 'create_staff' }),

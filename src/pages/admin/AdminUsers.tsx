@@ -4,6 +4,7 @@ import {
   adminCreateStaff,
   adminResetPassword,
   adminSetActive,
+  adminSetRoles,
   adminSetUsername,
   listProfiles,
   listUserRoles,
@@ -13,6 +14,7 @@ import { isValidUsername, normaliseUsername } from '../../lib/login'
 import {
   ROLE_LABELS,
   STAFF_ROLES,
+  TEACHER_ROLES,
   type AppRole,
   type StaffRole,
 } from '../../lib/types'
@@ -46,6 +48,7 @@ export function AdminUsers() {
   const [creating, setCreating] = useState(false)
   const [resetTarget, setResetTarget] = useState<string | null>(null)
   const [renameTarget, setRenameTarget] = useState<string | null>(null)
+  const [rolesTarget, setRolesTarget] = useState<string | null>(null)
 
   const profilesQuery = useQuery({
     queryKey: ['profiles'],
@@ -108,6 +111,20 @@ export function AdminUsers() {
     onError: onFailure,
   })
 
+  const rolesMutation = useMutation({
+    mutationFn: ({ userId, roles }: { userId: string; roles: StaffRole[] }) =>
+      adminSetRoles(userId, roles),
+    onSuccess: (_result, variables) => {
+      setError(null)
+      setRolesTarget(null)
+      setNotice(
+        `Roles updated to ${variables.roles.map((r) => ROLE_LABELS[r]).join(', ')}.`,
+      )
+      invalidate()
+    },
+    onError: onFailure,
+  })
+
   const activeMutation = useMutation({
     mutationFn: ({ userId, isActive }: { userId: string; isActive: boolean }) =>
       adminSetActive(userId, isActive),
@@ -125,6 +142,7 @@ export function AdminUsers() {
     createMutation.isPending ||
     resetMutation.isPending ||
     renameMutation.isPending ||
+    rolesMutation.isPending ||
     activeMutation.isPending
 
   const profiles = (profilesQuery.data ?? []).filter((p) => {
@@ -237,6 +255,18 @@ export function AdminUsers() {
                       className="btn-ghost"
                       disabled={busy}
                       onClick={() => {
+                        setRolesTarget(p.id)
+                        setError(null)
+                        setNotice(null)
+                      }}
+                    >
+                      Edit roles
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={busy}
+                      onClick={() => {
                         setResetTarget(p.id)
                         setError(null)
                         setNotice(null)
@@ -313,6 +343,53 @@ export function AdminUsers() {
           renameMutation.mutate({ userId: renameTarget, username })
         }
       />
+
+      <EditRolesModal
+        open={rolesTarget !== null}
+        subject={targetOf(rolesTarget)?.full_name ?? null}
+        initialRoles={rolesByUser.get(rolesTarget ?? '') ?? []}
+        busy={rolesMutation.isPending}
+        onClose={() => setRolesTarget(null)}
+        onSubmit={(roles) =>
+          rolesTarget && rolesMutation.mutate({ userId: rolesTarget, roles })
+        }
+      />
+    </div>
+  )
+}
+
+/**
+ * Role checkboxes. The three teaching roles are pre-selected because a teacher
+ * normally holds all of them; the admin and gate/medical duties are opt-in.
+ */
+function RolePicker({
+  selected,
+  onToggle,
+}: {
+  selected: StaffRole[]
+  onToggle: (role: StaffRole) => void
+}) {
+  return (
+    <div className="space-y-2">
+      {STAFF_ROLES.map((r) => (
+        <label
+          key={r}
+          className="flex items-center gap-2.5 text-sm text-navy-800"
+        >
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-mist-300 text-teal-600"
+            checked={selected.includes(r)}
+            onChange={() => onToggle(r)}
+          />
+          {ROLE_LABELS[r]}
+          {r === 'admin' ? (
+            <span className="text-xs text-mist-500">
+              full access, including creating accounts
+            </span>
+          ) : null}
+        </label>
+      ))}
     </div>
   )
 }
@@ -329,15 +406,23 @@ function CreateStaffModal({
   onSubmit: (input: {
     username: string
     fullName: string
-    role: StaffRole
+    roles: StaffRole[]
     password: string
   }) => void
 }) {
   const [fullName, setFullName] = useState('')
   const [username, setUsername] = useState('')
-  const [role, setRole] = useState<StaffRole>('class_teacher')
+  const [roles, setRoles] = useState<StaffRole[]>([...TEACHER_ROLES])
   const [password, setPassword] = useState('')
   const [localError, setLocalError] = useState<string | null>(null)
+
+  function toggle(role: StaffRole) {
+    setRoles((current) =>
+      current.includes(role)
+        ? current.filter((r) => r !== role)
+        : [...current, role],
+    )
+  }
 
   function submit(event: FormEvent) {
     event.preventDefault()
@@ -351,6 +436,10 @@ function CreateStaffModal({
       setLocalError(USERNAME_ERROR)
       return
     }
+    if (roles.length === 0) {
+      setLocalError('Choose at least one role.')
+      return
+    }
     const weak = passwordProblem(password)
     if (weak) {
       setLocalError(weak)
@@ -358,7 +447,7 @@ function CreateStaffModal({
     }
 
     setLocalError(null)
-    onSubmit({ username: handle, fullName: fullName.trim(), role, password })
+    onSubmit({ username: handle, fullName: fullName.trim(), roles, password })
   }
 
   return (
@@ -412,19 +501,14 @@ function CreateStaffModal({
           />
         </Field>
 
-        <Field label="Role" htmlFor="staff-role">
-          <select
-            id="staff-role"
-            className="input"
-            value={role}
-            onChange={(e) => setRole(e.target.value as StaffRole)}
-          >
-            {STAFF_ROLES.map((r) => (
-              <option key={r} value={r}>
-                {ROLE_LABELS[r]}
-              </option>
-            ))}
-          </select>
+        <Field
+          label="Roles"
+          htmlFor="staff-roles"
+          hint="A teacher usually holds all three teaching roles. The database re-checks these on every approval."
+        >
+          <div id="staff-roles">
+            <RolePicker selected={roles} onToggle={toggle} />
+          </div>
         </Field>
 
         <Field
@@ -441,6 +525,89 @@ function CreateStaffModal({
             onChange={(e) => setPassword(e.target.value)}
           />
         </Field>
+      </form>
+    </Modal>
+  )
+}
+
+function EditRolesModal({
+  open,
+  subject,
+  initialRoles,
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean
+  subject: string | null
+  initialRoles: AppRole[]
+  busy: boolean
+  onClose: () => void
+  onSubmit: (roles: StaffRole[]) => void
+}) {
+  const staffOnly = initialRoles.filter((r): r is StaffRole =>
+    (STAFF_ROLES as readonly AppRole[]).includes(r),
+  )
+  const [roles, setRoles] = useState<StaffRole[]>(staffOnly)
+  const [localError, setLocalError] = useState<string | null>(null)
+  const [key, setKey] = useState<string | null>(null)
+
+  // Re-seed the checkboxes whenever a different account is opened.
+  if (open && key !== subject) {
+    setKey(subject)
+    setRoles(staffOnly)
+    setLocalError(null)
+  }
+
+  function toggle(role: StaffRole) {
+    setRoles((current) =>
+      current.includes(role)
+        ? current.filter((r) => r !== role)
+        : [...current, role],
+    )
+  }
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    if (roles.length === 0) {
+      setLocalError('Choose at least one role.')
+      return
+    }
+    setLocalError(null)
+    onSubmit(roles)
+  }
+
+  return (
+    <Modal
+      open={open}
+      title="Edit roles"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="edit-roles-form"
+            className="btn-primary"
+            disabled={busy}
+          >
+            {busy ? 'Saving…' : 'Save roles'}
+          </button>
+        </>
+      }
+    >
+      <form id="edit-roles-form" onSubmit={submit} className="space-y-4">
+        {localError ? <Alert tone="danger">{localError}</Alert> : null}
+        <p className="text-sm text-mist-500">
+          Roles for{' '}
+          <span className="font-semibold text-navy-800">
+            {subject ?? 'this account'}
+          </span>
+          . This replaces the current set.
+        </p>
+        <RolePicker selected={roles} onToggle={toggle} />
       </form>
     </Modal>
   )

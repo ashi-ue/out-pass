@@ -447,6 +447,25 @@ begin
     perform public.test_record('Admin upsert applies the new name',
       'Regression Student v2', 'error: ' || sqlerrm, false);
   end;
+
+  -- Migration 0006: the four fields the Add-student form actually collects.
+  begin
+    v_row := public.admin_upsert_student(
+      'ADM-REG-002', 'Lean Student', 'CSE', null, null, null, null,
+      '3rd Year, CSE');
+    perform public.test_record('Student saves with only AD, class, name, dept',
+      'Lean Student', v_row.full_name,
+      v_row.full_name = 'Lean Student' and v_row.department = 'CSE'
+        and v_row.class_name = '3rd Year, CSE');
+    -- The label and the numeric year must never disagree.
+    perform public.test_record('Class label fills the academic year', '3',
+      coalesce(v_row.academic_year::text, 'null'), v_row.academic_year = 3);
+  exception when others then
+    perform public.test_record('Student saves with only AD, class, name, dept',
+      'Lean Student', 'error: ' || sqlerrm, false);
+    perform public.test_record('Class label fills the academic year', '3',
+      'error: ' || sqlerrm, false);
+  end;
 end $$;
 
 -- A student cannot read the audit log.
@@ -560,6 +579,89 @@ select public.test_set_user(null);
 select public.test_expect_error(
   'Password-change helper requires a session', 'AUTH_REQUIRED',
   $$select public.complete_password_change()$$);
+
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 10. Multi-role teachers stay scoped per request type (migration 0006)
+-- ---------------------------------------------------------------------------
+-- A teacher now holds all three teaching roles. That must NOT turn into blanket
+-- approval power: the scope check still compares the type's configured
+-- approver role against the caller's roles, so a teacher whose role set lacks
+-- the type's role is still refused. The medical approver is the control here.
+reset role;
+update public.approval_rules set is_active = true;
+update public.approval_rules set approver_role = 'class_teacher'
+  where request_type = 'going_home';
+
+insert into public.pass_requests
+  (admission_number, student_user_id, request_type, purpose, requested_departure,
+   requested_return, valid_from, valid_until, approval_status)
+values
+  ('2023CS1001','11111111-1111-1111-1111-111111111111','medical','Multi-role probe',
+   now() + interval '1 hour', now() + interval '3 hours',
+   now() + interval '1 hour', now() + interval '3 hours', 'pending')
+returning id::text as id \gset
+select set_config('test.m1', :'id', false);
+
+set role authenticated;
+-- The mentor fixture holds ONLY 'mentor'. The medical rule requires
+-- 'medical_approver', so the mentor must be refused even though they can
+-- approve other types.
+select public.test_set_user('22222222-2222-2222-2222-222222222222');
+select public.test_expect_error(
+  'Mentor cannot approve a medical request (per-type scope)',
+  'FORBIDDEN',
+  $$select public.approve_pass_request(current_setting('test.m1')::uuid, null)$$);
+
+-- The same caller CAN approve an afternoon outing, which their role owns.
+reset role;
+insert into public.pass_requests
+  (admission_number, student_user_id, request_type, purpose, requested_departure,
+   requested_return, valid_from, valid_until, approval_status)
+values
+  ('2023CS1001','11111111-1111-1111-1111-111111111111','afternoon_out','Own type',
+   now() + interval '1 hour', now() + interval '3 hours',
+   now() + interval '1 hour', now() + interval '3 hours', 'pending')
+returning id::text as id \gset
+select set_config('test.m2', :'id', false);
+
+set role authenticated;
+select public.test_set_user('22222222-2222-2222-2222-222222222222');
+do $$
+declare v_row public.pass_requests;
+begin
+  v_row := public.approve_pass_request(current_setting('test.m2')::uuid, null);
+  perform public.test_record('Mentor approves their own type', 'approved',
+    v_row.approval_status::text, v_row.approval_status = 'approved');
+end $$;
+
+-- A role-less account reaches nothing: this is the fail-closed control.
+-- A FRESH pending request is used because approve_pass_request() checks
+-- ALREADY_DECIDED before the scope check, so reusing test.m2 would report the
+-- wrong reason and mask a permission failure.
+reset role;
+insert into public.pass_requests
+  (admission_number, student_user_id, request_type, purpose, requested_departure,
+   requested_return, valid_from, valid_until, approval_status)
+values
+  ('2023CS1001','11111111-1111-1111-1111-111111111111','afternoon_out','No-role probe',
+   now() + interval '1 hour', now() + interval '3 hours',
+   now() + interval '1 hour', now() + interval '3 hours', 'pending')
+returning id::text as id \gset
+select set_config('test.m3', :'id', false);
+
+select public.test_set_user('77777777-7777-7777-7777-777777777777');
+do $$
+begin
+  perform public.admin_revoke_user_role(
+    '88888888-8888-8888-8888-888888888888', 'student');
+end $$;
+set role authenticated;
+select public.test_set_user('88888888-8888-8888-8888-888888888888');
+select public.test_expect_error(
+  'Account with no role cannot approve anything', 'FORBIDDEN',
+  $$select public.approve_pass_request(current_setting('test.m3')::uuid, null)$$);
 
 reset role;
 

@@ -83,6 +83,7 @@ export function AdminStudents() {
                 <tr>
                   <th className="th">Admission no.</th>
                   <th className="th">Name</th>
+                  <th className="th">Class</th>
                   <th className="th">Department</th>
                   <th className="th">Account</th>
                   <th className="th" />
@@ -95,6 +96,10 @@ export function AdminStudents() {
                       {s.admission_number}
                     </td>
                     <td className="td font-medium">{s.full_name ?? '—'}</td>
+                    <td className="td text-mist-600">
+                      {s.class_name ??
+                        (s.academic_year ? `Year ${s.academic_year}` : '—')}
+                    </td>
                     <td className="td text-mist-600">{s.department ?? '—'}</td>
                     <td className="td">
                       {s.user_id ? (
@@ -193,12 +198,10 @@ function StudentForm({
   )
   const [fullName, setFullName] = useState(student?.full_name ?? '')
   const [department, setDepartment] = useState(student?.department ?? '')
-  const [program, setProgram] = useState(student?.program ?? '')
-  const [academicYear, setAcademicYear] = useState(
-    student?.academic_year?.toString() ?? '',
+  const [className, setClassName] = useState(
+    student?.class_name ??
+      (student?.academic_year ? String(student.academic_year) : ''),
   )
-  const [email, setEmail] = useState(student?.email ?? '')
-  const [phone, setPhone] = useState(student?.phone ?? '')
   const [formError, setFormError] = useState<string | null>(null)
 
   const mutation = useMutation({
@@ -207,10 +210,7 @@ function StudentForm({
         admissionNumber,
         fullName,
         department: department || null,
-        program: program || null,
-        academicYear: academicYear ? Number(academicYear) : null,
-        email: email || null,
-        phone: phone || null,
+        className: className || null,
       }),
     onSuccess: onSaved,
     onError: (err) => {
@@ -277,6 +277,18 @@ function StudentForm({
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="Class"
+            htmlFor="class"
+            hint="e.g. 3rd Year, CSE. A leading number is also stored as the academic year."
+          >
+            <input
+              id="class"
+              className="input"
+              value={className}
+              onChange={(e) => setClassName(e.target.value)}
+            />
+          </Field>
           <Field label="Department" htmlFor="dept">
             <input
               id="dept"
@@ -285,41 +297,7 @@ function StudentForm({
               onChange={(e) => setDepartment(e.target.value)}
             />
           </Field>
-          <Field label="Program" htmlFor="prog">
-            <input
-              id="prog"
-              className="input"
-              value={program}
-              onChange={(e) => setProgram(e.target.value)}
-            />
-          </Field>
-          <Field label="Academic year" htmlFor="year">
-            <input
-              id="year"
-              type="number"
-              className="input"
-              value={academicYear}
-              onChange={(e) => setAcademicYear(e.target.value)}
-            />
-          </Field>
-          <Field label="Phone" htmlFor="phone">
-            <input
-              id="phone"
-              className="input"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          </Field>
         </div>
-        <Field label="Email" htmlFor="email">
-          <input
-            id="email"
-            type="email"
-            className="input"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </Field>
       </form>
     </Modal>
   )
