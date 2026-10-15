@@ -141,3 +141,39 @@ failure. It never touches the hosted project.
   installation token: it can read the repo but pushing or opening PRs returns
   `403 Resource not accessible by integration`. Use the PAT supplied by the user
   for writes, and re-point `origin` back to the credential-free URL afterwards.
+
+## Supabase hosted project (nvjhyzqbfmnzohlvgdca)
+
+- **Key capabilities differ sharply.** The `sb_secret_...` secret key is a
+  PostgREST/Auth key: it can read/write rows and manage auth users, but it
+  **cannot** run DDL or deploy Edge Functions (both return 401 from the
+  Management API). Apply schema through the dashboard SQL editor (paste
+  `supabase/setup_hosted.sql`); deploy functions with a personal access token
+  (`sbp_...`) via `supabase login` / `SUPABASE_ACCESS_TOKEN`.
+- **The publishable key is public and recoverable** from the deployed bundle:
+  `curl -s https://khuruj.vercel.app/` -> find `/assets/index-*.js` -> grep for
+  `sb_publishable_`. Handy when `.env.local` holds the local-stack values only.
+- **`students.admission_number` uniqueness is a PARTIAL index**
+  (`where admission_number is not null`), so every `on conflict
+  (admission_number)` must repeat the predicate - otherwise Postgres raises
+  "there is no unique or exclusion constraint matching the ON CONFLICT
+  specification". `student_campus_status.admission_number` is a real PK and
+  needs no predicate.
+- **Local `run.sh` cannot see a hosted-only bug in a DO block.** An uncaught
+  error aborts the whole `DO $$ ... $$`, so the checks silently disappear from
+  `test_results` and the run still prints "ALL DATABASE TESTS PASSED" with a
+  lower count. When adding regression checks, wrap the risky statement in an
+  inner `begin ... exception when others then perform test_record(..., false)`.
+  Verify a new regression test by reverting the fix and confirming the count and
+  the failure count both move.
+- **Verify RPC behaviour against hosted by impersonating roles**, not by trusting
+  local tests: sign in as a per-role user and call `/rest/v1/rpc/<fn>`. Test data
+  created this way must be removed afterwards (delete the auth users and any
+  `students`/`pass_requests`/`gate_events`/`student_campus_status` rows); leave
+  the real `admin` account alone.
+- **Edge Functions can be exercised before deploy** with
+  `deno serve -A --port 8787 supabase/functions/admin-users/index.ts` plus
+  `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`,
+  `SUPABASE_JWKS_URL` and `KHURUJ_ALLOWED_ORIGIN` exported. Point it at the
+  hosted project to prove the authorization logic on real data.
+
