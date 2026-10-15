@@ -38,10 +38,28 @@ than failing silently.
 
 ## 4. Apply the database migrations
 
-Migrations are additive, idempotent and non-destructive. **They are not applied
-yet** ‚Äî the hosted project currently has no tables.
+Migrations are additive, idempotent and non-destructive.
 
-### Option A ‚Äî Supabase CLI (recommended)
+> **Seeing `Could not find the function public.admin_upsert_student(...) in the
+> schema cache` when adding a student?** The deployed app is newer than the
+> database. Apply `0006` (Option A, B, C or D below) and the error goes away.
+> Adding a teacher fails the same way for a different reason: see section 6.
+
+### Option D: one command (applies the migration and deploys the function)
+
+```bash
+SUPABASE_ACCESS_TOKEN=sbp_xxx ./scripts/deploy-backend.sh
+```
+
+Needs a **personal access token** (Dashboard -> Account -> Access Tokens), which
+is separate from the API keys above. The script applies `0006` through the
+Management API and then deploys `admin-users`, so it fixes both the Add-student
+and Add-teacher failures in one step. It is safe to re-run and prints a
+verification summary at the end. Deploying the function additionally needs the
+Supabase CLI; if that is missing the script says so and prints the dashboard
+alternative.
+
+### Option A — Supabase CLI (recommended)
 
 Needs a **personal access token** (Dashboard ‚Üí Account ‚Üí Access Tokens), which is
 separate from the API keys above.
@@ -191,8 +209,12 @@ supabase functions deploy report-summary     # optional
 
 Until `admin-users` is deployed, **Admin -> Teachers -> Add teacher** cannot
 work: the browser calls the function, gets a 404 from the platform, and the modal
-shows "Failed to send a request to the Edge Function". It never reports a false
-success.
+shows "The server function is not reachable, so no account was created". It never
+reports a false success.
+
+> **Shortcut:** `SUPABASE_ACCESS_TOKEN=sbp_xxx ./scripts/deploy-backend.sh`
+> (section 4, Option D) applies the pending migration and deploys `admin-users`
+> together, then verifies both.
 
 `SUPABASE_URL` and the publishable key are provided automatically to Edge
 Functions; only the secret key and the allowed origin need to be set.
