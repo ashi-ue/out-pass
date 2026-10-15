@@ -52,9 +52,21 @@ supabase link --project-ref nvjhyzqbfmnzohlvgdca
 supabase db push          # applies 0001 .. 0005
 ```
 
-### Option B ‚Äî SQL editor (no access token)
+### Option B: SQL editor, one file (no access token)
 
-Paste the files from `supabase/migrations/` into the dashboard's SQL editor
+Open the dashboard SQL editor, paste the whole of
+**`supabase/setup_hosted.sql`**, and run it once. That file is a straight
+concatenation of `0001` .. `0005` plus a call to bootstrap the first
+administrator for the username `admin`, so it provisions the project in a
+single step.
+
+```text
+supabase/setup_hosted.sql   <- paste this whole file into the SQL editor
+```
+
+### Option C: SQL editor, file by file
+
+Paste the files from `supabase/migrations/` into the dashboard SQL editor
 **in order** and run them:
 
 1. `0001_core_schema.sql`
@@ -63,8 +75,8 @@ Paste the files from `supabase/migrations/` into the dashboard's SQL editor
 4. `0004_username_login.sql`
 5. `0005_bootstrap_admin_username.sql`
 
-Both options are safe to re-run: every statement is `if not exists` /
-`create or replace` / `drop policy if exists ‚Ä¶ create policy`.
+All three options are safe to re-run: every statement is `if not exists` /
+`create or replace` / `drop policy if exists ... create policy`.
 
 Before pushing, read `docs/DATABASE_INSPECTION.md`. If a `students` table is ever
 imported with duplicate admission numbers, the unique index is skipped with a
@@ -73,17 +85,36 @@ warning ‚Äî resolve the duplicates and re-run `0001`.
 ## 5. Create the first administrator
 
 Staff sign in with a **username**, not an email: the account address is derived
-as `<username>@khuruj.local`. Create the first administrator once, from the SQL
-editor (runs as `service_role`):
+as `<username>@khuruj.local`.
+
+The account itself must exist before it can be granted a role. Create it either
+from **Dashboard -> Authentication -> Users -> Add user** (email
+`admin@khuruj.local`, the password you want, and user metadata
+`{"username": "admin", "full_name": "admin"}`), or with the Auth admin API:
+
+```bash
+curl -X POST "$SUPABASE_URL/auth/v1/admin/users" \
+  -H "apikey: $SUPABASE_SECRET_KEY" \
+  -H "Authorization: Bearer $SUPABASE_SECRET_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@khuruj.local","password":"<your-password>",
+       "email_confirm":true,
+       "user_metadata":{"username":"admin","full_name":"admin"}}'
+```
+
+Then grant the role once, from the SQL editor (runs as `service_role`):
 
 ```sql
-select public.bootstrap_admin('ayesha.khan');
+select public.bootstrap_admin('admin');
 ```
 
 The function accepts either a username or an email (it maps one to the other) and
 refuses to run if an administrator already exists. After this, all further staff
 and student accounts are created from the app itself, in **Admin -> Teachers**,
 and every subsequent role change happens in **Admin -> Users**.
+
+> If you used Option B above, the bundle already ends with this call, so the
+> administrator is created in the same step.
 
 ### The `admin-users` Edge Function
 

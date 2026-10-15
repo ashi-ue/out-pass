@@ -8,6 +8,11 @@
 -- Run it from the Supabase SQL editor (which uses service_role) exactly once.
 -- ============================================================================
 
+-- Dropped first so the migration stays repeatable: 0005 renames the input
+-- parameter, and Postgres refuses to rename a parameter via `create or replace`.
+-- Nothing else calls this function, so the gap is harmless.
+drop function if exists public.bootstrap_admin(text);
+
 create or replace function public.bootstrap_admin(p_email text)
 returns void
 language plpgsql security definer set search_path = ''
