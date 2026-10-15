@@ -14,10 +14,12 @@ npm run test:run       # vitest, frontend unit tests
 npm run build          # tsc --noEmit && vite build
 
 ./supabase/tests/run.sh   # database tests in a throwaway Postgres (needs Docker)
+
+SUPABASE_ACCESS_TOKEN=sbp_xxx ./scripts/deploy-backend.sh  # apply migration + deploy function
 ```
 
 Run `supabase/tests/run.sh` after **any** migration change. It applies the real
-migrations to PostgreSQL 17 and checks 52 security rules; it exits non-zero on
+migrations to PostgreSQL 17 and checks 60 security rules; it exits non-zero on
 failure. It never touches the hosted project.
 
 ## Layout
@@ -161,8 +163,19 @@ failure. It never touches the hosted project.
   PostgREST/Auth key: it can read/write rows and manage auth users, but it
   **cannot** run DDL or deploy Edge Functions (both return 401 from the
   Management API). Apply schema through the dashboard SQL editor (paste
-  `supabase/setup_hosted.sql`); deploy functions with a personal access token
-  (`sbp_...`) via `supabase login` / `SUPABASE_ACCESS_TOKEN`.
+  `supabase/setup_hosted.sql`) or `scripts/deploy-backend.sh`; deploy functions
+  with a personal access token (`sbp_...`) via `supabase login` /
+  `SUPABASE_ACCESS_TOKEN`.
+- **`scripts/deploy-backend.sh` does both hosted steps in one command.** It
+  applies the newest migration through the Management API
+  (`/v1/projects/{ref}/database/query`) and deploys `admin-users`, then verifies
+  both. Applying SQL needs only the token; deploying the function also needs the
+  Supabase CLI. Safe to re-run.
+- **A green Vercel deploy does not mean the backend is current.** The frontend
+  ships on merge; the database and Edge Functions do not. When the app is newer
+  than the hosted project, the two symptoms are
+  `Could not find the function ... in the schema cache` (migration missing) and
+  `The server function is not reachable` (function not deployed).
 - **The publishable key is public and recoverable** from the deployed bundle:
   `curl -s https://khuruj.vercel.app/` -> find `/assets/index-*.js` -> grep for
   `sb_publishable_`. Handy when `.env.local` holds the local-stack values only.
