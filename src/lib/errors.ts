@@ -82,5 +82,20 @@ export function friendlyError(error: unknown): string {
     return 'Please confirm your email address before signing in.'
   }
 
+  // Two failures mean the backend is behind the deployed app rather than
+  // anything the user did, so name the cause instead of echoing PostgREST.
+  if (/in the schema cache/i.test(message)) {
+    return (
+      'The database is missing a recent change, so this could not be saved. ' +
+      'An administrator must apply the latest migration (supabase/migrations).'
+    )
+  }
+  if (/Failed to send a request to the Edge Function/i.test(message)) {
+    return (
+      'The server function is not reachable, so no account was created. ' +
+      'An administrator must deploy the admin-users Edge Function.'
+    )
+  }
+
   return message
 }
