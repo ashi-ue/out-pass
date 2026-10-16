@@ -207,10 +207,12 @@ supabase functions deploy admin-users
 supabase functions deploy report-summary     # optional
 ```
 
-Until `admin-users` is deployed, **Admin -> Teachers -> Add teacher** cannot
+If `admin-users` is not deployed, **Admin -> Teachers -> Add teacher** cannot
 work: the browser calls the function, gets a 404 from the platform, and the modal
 shows "The server function is not reachable, so no account was created". It never
-reports a false success.
+reports a false success. On the hosted project this function **is** deployed and
+`ACTIVE` (measured 2026-10-15), so this section is only needed when setting up a
+new project.
 
 > **Shortcut:** `SUPABASE_ACCESS_TOKEN=sbp_xxx ./scripts/deploy-backend.sh`
 > (section 4, Option D) applies the pending migration and deploys `admin-users`
@@ -384,13 +386,32 @@ rewrite. Do not delete `vercel.json`; without it, refreshing or deep-linking
 
 ## 11. Remaining configuration tasks
 
-- [x] Provide the publishable and secret keys (configured in `.env.local`,
+### Hosted project state (measured 2026-10-15)
+
+Verified live against `nvjhyzqbfmnzohlvgdca`:
+
+- [x] Migrations `0001`–`0006` applied. `students.class_name` exists, and
+      `admin_upsert_student` is the 8-argument signature.
+- [x] `admin-users` Edge Function deployed and `ACTIVE`.
+- [x] Existing data preserved: 1 account (`admin`), 0 students, 0 pass requests,
+      0 gate events. Nothing dropped or overwritten.
+- [x] Add-student and Add-teacher paths replayed end to end against the hosted
+      project and both succeed.
+- [x] Audit log is append-only in the live database: an admin can neither delete
+      nor update rows, and a non-admin sees none.
+- [x] Deployed frontend bundle targets `nvjhyzqbfmnzohlvgdca`.
+
+Still open:
+
+- [ ] Provide the publishable and secret keys (configured in `.env.local`,
       which is git-ignored; the secret key is backend-only).
 - [ ] Inspect the live schema and confirm the barcode column name
       (`docs/DATABASE_INSPECTION.md`).
-- [ ] Resolve duplicate admission numbers, if any.
+- [x] Resolve duplicate admission numbers, if any. There are currently no
+      students, so there is nothing to resolve.
 - [ ] Run the manual test plan (`docs/TEST_PLAN.md`).
 - [ ] Seed administrators and link real student accounts on the hosted project.
       Demo accounts already exist for the local stack (`9c` above).
 - [ ] Set the production origin in Auth redirects and in
       `KHURUJ_ALLOWED_ORIGIN`.
+

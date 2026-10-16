@@ -93,10 +93,22 @@ failure. It never touches the hosted project.
 - Supabase secrets: only `VITE_`-prefixed vars reach the browser. The secret key
   is used exclusively by the Edge Function. `.env.local` is gitignored; never
   commit real keys.
-- **The hosted project (`nvjhyzqbfmnzohlvgdca`) is empty** — no tables, no auth
-  users, no buckets, Postgres 14.18. There is no Shuhood schema here to reuse.
-  Re-verify with `GET /rest/v1/` (OpenAPI `definitions`) before assuming
+- **The hosted project (`nvjhyzqbfmnzohlvgdca`) is provisioned, not empty.**
+  Measured 2026-10-15: Postgres 17.11, migrations `0001`–`0006` applied
+  (9 tables), the `admin-users` Edge Function deployed and `ACTIVE`. Data at
+  that time: 1 account (`admin`, role `admin`), 0 students, 0 pass requests,
+  0 gate events. `students.class_name` exists; `admin_upsert_student` is the
+  8-argument signature. There is no Shuhood schema here to reuse. Re-verify with
+  the Management API (`/v1/projects/{ref}/database/query`) before assuming
   otherwise. See `docs/DATABASE_INSPECTION.md`.
+- **`admin_upsert_student` has no `approver_role` fallback** and does not need
+  one: the four `approval_rules` rows each map a request type to a single role,
+  and `app.can_decide()` compares against the caller's whole role set, so a
+  teacher holding several roles already passes. Do not "fix" this.
+- **`audit_log` is append-only for clients**, enforced by RLS: the only policy
+  is a SELECT for admins, so an authenticated caller (even an admin) deletes and
+  updates 0 rows and a non-admin sees 0 rows. Test-run noise in the audit log
+  therefore cannot be removed — it is a permanent record by design.
 - Edge Functions use `@supabase/server`: `withSupabase({ auth: 'user' }, …)`.
   The handler only runs after the JWT is verified against the project's JWKS.
   Keep reading roles from the **database** via `ctx.supabase`, not from
