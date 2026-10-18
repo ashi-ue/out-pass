@@ -27,6 +27,48 @@ import {
   Spinner,
 } from '../../components/ui'
 
+/**
+ * The two kinds of account an administrator can create here.
+ *
+ * A teacher holds the three teaching roles at once, because approving passes is
+ * split across three duties. Gate security is a single duty with its own portal.
+ * Administrators are created by extending an existing account (see Edit roles),
+ * which keeps the number of people who can create accounts deliberately small.
+ */
+const ACCOUNT_PRESETS = [
+  {
+    kind: 'teacher',
+    label: 'Teacher',
+    buttonLabel: 'Add teacher',
+    title: 'Add a teacher',
+    description:
+      'Mentor, class teacher and duty teacher. A teacher normally holds all three.',
+    roles: TEACHER_ROLES,
+  },
+  {
+    kind: 'security',
+    label: 'Gate security',
+    buttonLabel: 'Add security',
+    title: 'Add a gate security officer',
+    description:
+      'Gate security only. They verify passes at the gate and record gate-out and gate-in.',
+    roles: ['gate_security'],
+  },
+] as const satisfies ReadonlyArray<{
+  kind: string
+  label: string
+  buttonLabel: string
+  title: string
+  description: string
+  roles: readonly StaffRole[]
+}>
+
+type AccountKind = (typeof ACCOUNT_PRESETS)[number]['kind']
+
+function presetFor(kind: AccountKind) {
+  return ACCOUNT_PRESETS.find((p) => p.kind === kind) ?? ACCOUNT_PRESETS[0]
+}
+
 const PASSWORD_HINT = 'At least 8 characters, with a letter and a digit.'
 const USERNAME_ERROR =
   'Usernames are 3–32 characters: lowercase letters, digits, dot, dash or underscore.'
@@ -45,7 +87,7 @@ export function AdminUsers() {
   const [notice, setNotice] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
-  const [creating, setCreating] = useState(false)
+  const [createKind, setCreateKind] = useState<AccountKind | null>(null)
   const [resetTarget, setResetTarget] = useState<string | null>(null)
   const [renameTarget, setRenameTarget] = useState<string | null>(null)
   const [rolesTarget, setRolesTarget] = useState<string | null>(null)
@@ -80,7 +122,7 @@ export function AdminUsers() {
     mutationFn: adminCreateStaff,
     onSuccess: (result) => {
       setError(null)
-      setCreating(false)
+      setCreateKind(null)
       setNotice(`Account “${result.username}” created.`)
       invalidate()
     },
@@ -163,17 +205,22 @@ export function AdminUsers() {
         title="Teachers &amp; administrators"
         subtitle="Create staff accounts, set their username and password, and choose the permissions they hold."
         actions={
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => {
-              setCreating(true)
-              setError(null)
-              setNotice(null)
-            }}
-          >
-            Add teacher
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {ACCOUNT_PRESETS.map((preset) => (
+              <button
+                key={preset.kind}
+                type="button"
+                className="btn-primary"
+                onClick={() => {
+                  setCreateKind(preset.kind)
+                  setError(null)
+                  setNotice(null)
+                }}
+              >
+                {preset.buttonLabel}
+              </button>
+            ))}
+          </div>
         }
       />
 
@@ -202,7 +249,7 @@ export function AdminUsers() {
       ) : profiles.length === 0 ? (
         <EmptyState
           title="No staff accounts found"
-          description="Add a teacher to create their username and password."
+          description="Add a teacher or a gate security officer to create their username and password."
         />
       ) : (
         <div className="space-y-4">
@@ -317,9 +364,9 @@ export function AdminUsers() {
       </p>
 
       <CreateStaffModal
-        open={creating}
+        kind={createKind}
         busy={createMutation.isPending}
-        onClose={() => setCreating(false)}
+        onClose={() => setCreateKind(null)}
         onSubmit={(input) => createMutation.mutate(input)}
       />
 
@@ -395,12 +442,12 @@ function RolePicker({
 }
 
 function CreateStaffModal({
-  open,
+  kind,
   busy,
   onClose,
   onSubmit,
 }: {
-  open: boolean
+  kind: AccountKind | null
   busy: boolean
   onClose: () => void
   onSubmit: (input: {
@@ -410,11 +457,30 @@ function CreateStaffModal({
     password: string
   }) => void
 }) {
+  const preset = presetFor(kind ?? 'teacher')
+  const open = kind !== null
+
   const [fullName, setFullName] = useState('')
   const [username, setUsername] = useState('')
-  const [roles, setRoles] = useState<StaffRole[]>([...TEACHER_ROLES])
+  const [roles, setRoles] = useState<StaffRole[]>([...preset.roles])
   const [password, setPassword] = useState('')
   const [localError, setLocalError] = useState<string | null>(null)
+  const [seededKind, setSeededKind] = useState<AccountKind | null>(null)
+
+  // Re-seed the form whenever the modal is opened for a different kind, so
+  // "Add security" never inherits the teacher's pre-selected roles.
+  if (open && seededKind !== kind) {
+    setSeededKind(kind)
+    setRoles([...preset.roles])
+    setLocalError(null)
+  }
+  if (!open && seededKind !== null) {
+    setSeededKind(null)
+    setFullName('')
+    setUsername('')
+    setPassword('')
+    setLocalError(null)
+  }
 
   function toggle(role: StaffRole) {
     setRoles((current) =>
@@ -429,7 +495,7 @@ function CreateStaffModal({
     const handle = normaliseUsername(username)
 
     if (!fullName.trim()) {
-      setLocalError('Enter the teacher’s full name.')
+      setLocalError('Enter their full name.')
       return
     }
     if (!isValidUsername(handle)) {
@@ -453,7 +519,7 @@ function CreateStaffModal({
   return (
     <Modal
       open={open}
-      title="Add a teacher"
+      title={preset.title}
       onClose={onClose}
       footer={
         <>
@@ -504,7 +570,7 @@ function CreateStaffModal({
         <Field
           label="Roles"
           htmlFor="staff-roles"
-          hint="A teacher usually holds all three teaching roles. The database re-checks these on every approval."
+          hint={`${preset.description} The database re-checks these on every approval.`}
         >
           <div id="staff-roles">
             <RolePicker selected={roles} onToggle={toggle} />

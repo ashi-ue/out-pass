@@ -80,6 +80,13 @@ failure. It never touches the hosted project.
     `admin_upsert_student` updates with `coalesce`, so an omitted field is left
     untouched rather than cleared. `class_name` is mirrored to `academic_year`
     only when the label starts with a number.
+13. **The admin page creates teachers and gate security, nothing else.**
+    "Add teacher" preselects `mentor` + `class_teacher` + `duty_teacher`; "Add
+    security" preselects `gate_security` alone. Both post the same
+    `create_staff` action, so the role list is the only difference — keep it
+    that way rather than adding a second endpoint. Administrators are promoted
+    with "Edit roles" on an existing account, which keeps the set of people who
+    can create accounts small.
 
 ## Gotchas
 
