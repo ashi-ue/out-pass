@@ -1,11 +1,16 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { gateLookup, recordGateIn, recordGateOut } from '../../lib/api'
 import { friendlyError } from '../../lib/errors'
 import { formatDateTime, isExpired, relativeToNow } from '../../lib/time'
 import { REQUEST_TYPE_LABELS, type GateLookupResult } from '../../lib/types'
 import { Alert, PageHeader, Spinner } from '../../components/ui'
-import { useBarcodeScanner } from './useBarcodeScanner'
 
 type Confirmation =
   | { kind: 'gate_out'; admission: string; at: string }
@@ -13,8 +18,8 @@ type Confirmation =
 
 export function GatePortal() {
   const queryClient = useQueryClient()
-  const videoRef = useRef<HTMLVideoElement | null>(null)
-  const [manualValue, setManualValue] = useState('')
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const [scanValue, setScanValue] = useState('')
   const [lookup, setLookup] = useState<GateLookupResult | null>(null)
   const [lookupError, setLookupError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -22,28 +27,38 @@ export function GatePortal() {
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
   const [lookingUp, setLookingUp] = useState(false)
 
-  const runLookup = useCallback(async (admissionNumber: string) => {
-    const value = admissionNumber.trim()
-    if (!value) return
-    setLookingUp(true)
-    setLookupError(null)
-    setActionError(null)
-    setConfirmation(null)
-    try {
-      const result = await gateLookup(value)
-      setLookup(result)
-    } catch (err) {
-      setLookup(null)
-      setLookupError(friendlyError(err))
-    } finally {
-      setLookingUp(false)
-    }
+  // The hardware scanner behaves as a keyboard: it types the barcode digits and
+  // then a newline. Keeping focus in the field means the officer never has to
+  // click before each scan.
+  const focusInput = useCallback(() => {
+    inputRef.current?.focus()
   }, [])
 
-  const scanner = useBarcodeScanner(videoRef, (text) => {
-    setManualValue(text)
-    void runLookup(text)
-  })
+  const runLookup = useCallback(
+    async (admissionNumber: string) => {
+      const value = admissionNumber.trim()
+      if (!value) return
+      setLookingUp(true)
+      setLookupError(null)
+      setActionError(null)
+      setConfirmation(null)
+      try {
+        const result = await gateLookup(value)
+        setLookup(result)
+      } catch (err) {
+        setLookup(null)
+        setLookupError(friendlyError(err))
+      } finally {
+        setLookingUp(false)
+        focusInput()
+      }
+    },
+    [focusInput],
+  )
+
+  useEffect(() => {
+    focusInput()
+  }, [focusInput])
 
   function refresh() {
     void queryClient.invalidateQueries({ queryKey: ['campus-status'] })
@@ -83,17 +98,24 @@ export function GatePortal() {
     onError: (err) => setActionError(friendlyError(err)),
   })
 
-  function handleManualSubmit(event: FormEvent) {
+  function handleSubmit(event: FormEvent) {
     event.preventDefault()
-    scanner.stop()
-    void runLookup(manualValue)
+    const value = scanValue.trim()
+    // Clear immediately so the next scan types into an empty field, and a
+    // second scan of the same card still triggers a fresh lookup.
+    setScanValue('')
+    void runLookup(value)
   }
 
-  useEffect(() => {
-    // Pause the camera while a result is on screen to save battery.
-    if (lookup && scanner.active) scanner.stop()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lookup])
+  function clear() {
+    setScanValue('')
+    setLookup(null)
+    setLookupError(null)
+    setActionError(null)
+    setConfirmation(null)
+    setNote('')
+    focusInput()
+  }
 
   const pass = lookup?.pass ?? null
   const isOutside = lookup?.campus_status === 'outside'
@@ -109,88 +131,49 @@ export function GatePortal() {
     <div className="max-w-5xl">
       <PageHeader
         title="Gate security"
-        subtitle="Scan an ID card or enter the admission number, verify identity, then record the movement explicitly."
+        subtitle="Scan an ID card or type the admission number, verify identity, then record the movement explicitly."
       />
 
       <div className="grid gap-5 lg:grid-cols-2">
-        {/* Scanner + manual lookup */}
+        {/* Scan input */}
         <div className="card p-5">
           <h2 className="mb-3 text-sm font-semibold tracking-wide text-mist-500 uppercase">
             Identify student
           </h2>
 
-          <div className="relative overflow-hidden rounded-lg bg-navy-900">
-            <video
-              ref={videoRef}
-              className="h-56 w-full object-cover"
-              muted
-              playsInline
-            />
-            {!scanner.active ? (
-              <div className="absolute inset-0 flex items-center justify-center text-center text-sm text-navy-100">
-                Camera preview
-              </div>
-            ) : (
-              <div className="pointer-events-none absolute inset-x-8 top-1/2 h-0.5 -translate-y-1/2 bg-teal-400/80" />
-            )}
-          </div>
-
-          <div className="mt-3 flex gap-2">
-            {scanner.active ? (
-              <button type="button" className="btn-ghost" onClick={scanner.stop}>
-                Stop camera
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn-navy"
-                onClick={() => void scanner.start()}
-                disabled={!scanner.supported}
-              >
-                Start camera scanner
-              </button>
-            )}
-            <button
-              type="button"
-              className="btn-ghost"
-              onClick={() => {
-                scanner.resetDedupe()
-                setManualValue('')
-                setLookup(null)
-                setLookupError(null)
-                setConfirmation(null)
-                setNote('')
-              }}
-            >
-              Clear
-            </button>
-          </div>
-
-          {scanner.error ? (
-            <p className="mt-2 text-xs text-amber-700">{scanner.error}</p>
-          ) : null}
-
-          <form onSubmit={handleManualSubmit} className="mt-4">
+          <form onSubmit={handleSubmit}>
             <label className="label" htmlFor="admission">
-              Manual admission number lookup
+              Scan or enter admission number
             </label>
             <div className="flex gap-2">
               <input
                 id="admission"
-                className="input"
+                ref={inputRef}
+                className="input font-mono text-lg"
                 placeholder="e.g. 2023CS1042"
-                value={manualValue}
-                onChange={(e) => setManualValue(e.target.value)}
+                value={scanValue}
+                onChange={(e) => setScanValue(e.target.value)}
+                autoComplete="off"
+                autoFocus
               />
               <button
                 type="submit"
                 className="btn-primary"
-                disabled={lookingUp || !manualValue.trim()}
+                disabled={lookingUp || !scanValue.trim()}
               >
                 {lookingUp ? 'Looking up…' : 'Look up'}
               </button>
             </div>
+            <p className="mt-2 text-xs text-mist-500">
+              Scan with the barcode reader, or type the number and press Enter.
+            </p>
           </form>
+
+          <div className="mt-4 border-t border-mist-200 pt-4">
+            <button type="button" className="btn-ghost" onClick={clear}>
+              Clear
+            </button>
+          </div>
         </div>
 
         {/* Result */}
@@ -341,9 +324,7 @@ export function GatePortal() {
                   type="button"
                   className="btn-primary"
                   disabled={!canGateOut || gateOutMutation.isPending}
-                  onClick={() =>
-                    pass && gateOutMutation.mutate(pass.id)
-                  }
+                  onClick={() => pass && gateOutMutation.mutate(pass.id)}
                 >
                   {gateOutMutation.isPending ? 'Recording…' : 'Confirm Gate-Out'}
                 </button>

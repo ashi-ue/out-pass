@@ -47,11 +47,16 @@ is considered working. Each maps to a rule in the brief.
 
 ## D. Duplicate scans
 
+The gate uses a keyboard-wedge barcode reader: it types the barcode digits and
+then a newline into the focused field. There is no camera preview, and the field
+is cleared after each scan so consecutive scans never concatenate.
+
 | # | Steps | Expected |
 | --- | --- | --- |
-| D1 | Hold a barcode in front of the camera for several seconds | Exactly one lookup (2.5s de-duplication window). |
-| D2 | Scan the same card twice quickly | One lookup. |
-| D3 | Clear, then scan the same card again | A fresh lookup occurs. |
+| D1 | Scan the same card twice in a row | Two separate lookups; the second scan still triggers one (the field clears between scans). |
+| D2 | Scan a card, then scan a different card | The second card replaces the first result. |
+| D3 | Scan, then press Clear, then scan the same card | A fresh lookup occurs. |
+| D4 | Scan while a result is on screen | The new result replaces the old one. |
 
 ## E. Data integrity
 

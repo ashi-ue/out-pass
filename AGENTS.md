@@ -87,6 +87,11 @@ failure. It never touches the hosted project.
     that way rather than adding a second endpoint. Administrators are promoted
     with "Edit roles" on an existing account, which keeps the set of people who
     can create accounts small.
+14. **The gate reader is a keyboard-wedge scanner, not a camera.** It types the
+    barcode digits and a newline into the focused input on `/gate`, so the page
+    keeps that input focused and clears it after every scan — otherwise the next
+    scan appends to the previous number. Do not reintroduce `getUserMedia` or a
+    video preview; the reader decodes the barcode itself.
 
 ## Gotchas
 
