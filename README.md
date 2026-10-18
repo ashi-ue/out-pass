@@ -30,7 +30,7 @@ return — using the barcode already on each student's ID card.
 ## Stack
 
 React 19 · TypeScript · Vite 7 · Tailwind CSS v4 · Supabase (Auth, Postgres,
-RLS, Edge Functions) · `@zxing/browser` for barcode scanning.
+RLS, Edge Functions) · keyboard-wedge barcode reader at the gate (no camera).
 
 ## Quick start
 

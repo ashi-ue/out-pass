@@ -177,8 +177,10 @@ barcodes, role management and the last-admin guard, and audit-log capture.
    this is done, the app has no schema and no screen can load real data.
 2. **The live `students` table is empty**, so no barcode resolves yet. See
    `DATABASE_INSPECTION.md` section 6.
-3. **The browser camera path** for barcode scanning needs a camera and HTTPS. The
-   manual admission-number fallback is what can be exercised locally.
+3. **The gate reader is a keyboard-wedge scanner.** It types the barcode into
+   the focused field, so the page only needs the scan input and a manual
+   fallback. There is no camera path to configure, and no camera permission to
+   grant.
 4. **The Edge Function is not deployed.** It runs and authenticates correctly
    locally against the live JWKS, but `supabase functions deploy` also needs the
    access token.
